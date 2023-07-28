@@ -211,7 +211,7 @@ namespace OpenIris
             CvInvoke.Ellipse(
                 debug,
                 output.Pupil,
-                new MCvScalar(0, 255, 255),
+                new MCvScalar(0, 255, 0),
                 1,
                 LineType.AntiAlias
             );
@@ -249,13 +249,13 @@ namespace OpenIris
                 var point = output.PupilPoints[i];
                 var row = point.Y - pupilSearchOffset.Y;
                 var col = point.X - pupilSearchOffset.X;
-                imgDebug[row, col] = new Bgr(0, 255, 0);
+                imgDebug[row, col] = new Bgr(0, 255, 255);
             }
             var debug = imgDebug;
 
             var ell = output.Pupil;
             ell.Center -= new Size(pupilSearchOffset);
-            CvInvoke.Ellipse(debug, ell, new MCvScalar(0, 255, 255), 1);
+            CvInvoke.Ellipse(debug, ell, new MCvScalar(0, 255, 0), 1);
 
             return debug.Mat;
         }
@@ -282,7 +282,7 @@ namespace OpenIris
 
             // Create a magenta color Mat with the same size as the original image
             Mat magenta = new Mat(p4Thresh.Rows, p4Thresh.Cols, DepthType.Cv8U, 3);
-            magenta.SetTo(new MCvScalar(120.0, 0.0, 0.0));
+            magenta.SetTo(new MCvScalar(120.0, 0.0, 120.0));
 
             // Perform bitwise AND operation to highlight the thresholded region in blue
             CvInvoke.BitwiseAnd(magenta, p4Thresh, p4Thresh);
@@ -388,7 +388,11 @@ namespace OpenIris
             if (edgePts.Size != 0)
             {
                 CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
+                var pupilContour = Mat.Zeros(ImgPupilEdgeMasked.Rows, ImgPupilEdgeMasked.Cols, DepthType.Cv8U, 1);
+                CvInvoke.DrawContours(pupilContour, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255));
+                CvInvoke.FindNonZero(pupilContour, pupilPtsRaw);
             } // TODO add error
+
 
             var pupilPtsArr = pupilPtsRaw.ToArray();
             for (int i = 0; i < pupilPtsRaw.Size; i++)
@@ -476,7 +480,6 @@ namespace OpenIris
                 var debugPupil = DrawPupilDebug(output, config);
                 EyeTrackerDebug.AddImage("DPI-Pupil", imageEye.WhichEye, debugPupil.ToImage<Bgr, byte>());
             }
-            
 
             return output;
         }
