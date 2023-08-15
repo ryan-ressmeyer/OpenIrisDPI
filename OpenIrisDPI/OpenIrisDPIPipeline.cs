@@ -77,11 +77,15 @@
 
 
             var pupil = new PupilData(output.Pupil.Center + new Size(dpiConfig.Crop.Location), output.Pupil.Size, output.Pupil.Angle);
+
             CornealReflectionData[] crs =
             {
                 new CornealReflectionData(output.P1 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
-                new CornealReflectionData(output.P4 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f)
+                new CornealReflectionData(output.P1Fine + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
+                new CornealReflectionData(output.P1Est + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
+                new CornealReflectionData(output.P4 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
             };
+
             // Create the data structure
             var eyeData = new EyeData()
             {

@@ -18,6 +18,7 @@ namespace OpenIris
     using Emgu.CV.Util;
     using System.Diagnostics;
     using Emgu.CV.Stitching;
+    using OpenIris.ImageProcessing;
 
     public class OpenIrisDPIOutput
     {
@@ -26,6 +27,7 @@ namespace OpenIris
         public RotatedRect Pupil { get; set; }        // Estimated Pupil Ellipse
         public Point P1Est { get; set; }       // Center of mass of thresholded pupil
         public PointF P1 { get; set; }          // Refined estimate of P1 CoM
+        public PointF P1Fine { get; set; }     // Refined estimate of P1 using pupil background
         public Point P4Est { get; set; }       // Maximum pixel after P1 blocked out
         public PointF P4 { get; set; }          // Refined estimate of P4 CoM
 
@@ -63,10 +65,20 @@ namespace OpenIris
         private Mat ImgThreshDs = new();
         private Mat ImgPupilEdge = new();
         private Mat ImgPupilEdgeMasked = new();
-        private Mat ImgPupil = new();
-        private Mat ImgPupilDebug = new();
+        private Mat ImgP1 = new();
+        private Mat ImgP1Debug = new();
         private Mat ImgP1Ds = new();
         private Mat ImgP1Thresh = new();
+        private Mat ImgP4 = new();
+        public OpenIrisDPI()
+        {
+
+        }
+        
+        public void Dispose()
+        {
+            
+        }
 
         public PointF GetCenterOfMass(Mat img)
         {
@@ -260,35 +272,24 @@ namespace OpenIris
             return debug.Mat;
         }
 
-        public Mat DrawP1P4Debug(OpenIrisDPIOutput output, OpenIrisDPIConfig config)
+        public Mat DrawP1Debug(OpenIrisDPIOutput output, OpenIrisDPIConfig config)
         {
             Mat colorImg = new();
-            CvInvoke.CvtColor(ImgPupilDebug, colorImg, ColorConversion.Gray2Bgr);
+            CvInvoke.CvtColor(ImgP1Debug, colorImg, ColorConversion.Gray2Bgr);
 
             Mat p1Thresh = new();
-            CvInvoke.Threshold(ImgPupilDebug, p1Thresh, config.P1Threshold, 255, ThresholdType.Binary);
+            CvInvoke.Threshold(ImgP1Debug, p1Thresh, config.P1Threshold, 255, ThresholdType.Binary);
             CvInvoke.CvtColor(p1Thresh, p1Thresh, ColorConversion.Gray2Bgr);
 
-            // Create a yellow color Mat with the same size as the original image
-            Mat yellow = new Mat(p1Thresh.Rows, p1Thresh.Cols, DepthType.Cv8U, 3);
-            yellow.SetTo(new MCvScalar(0.0, 80.0, 80.0));
+            // Create a blue color Mat with the same size as the original image
+            Mat color = new Mat(p1Thresh.Rows, p1Thresh.Cols, DepthType.Cv8U, 3);
+            color.SetTo(new MCvScalar(0.0, 120.0, 120.0));
 
             // Perform bitwise AND operation to highlight the thresholded region in blue
-            CvInvoke.BitwiseAnd(yellow, p1Thresh, p1Thresh);
-
-            Mat p4Thresh = new();
-            CvInvoke.Threshold(ImgPupilDebug, p4Thresh, config.P4Threshold, 255, ThresholdType.Binary);
-            CvInvoke.CvtColor(p4Thresh, p4Thresh, ColorConversion.Gray2Bgr);
-
-            // Create a magenta color Mat with the same size as the original image
-            Mat magenta = new Mat(p4Thresh.Rows, p4Thresh.Cols, DepthType.Cv8U, 3);
-            magenta.SetTo(new MCvScalar(120.0, 0.0, 120.0));
-
-            // Perform bitwise AND operation to highlight the thresholded region in blue
-            CvInvoke.BitwiseAnd(magenta, p4Thresh, p4Thresh);
+            CvInvoke.BitwiseAnd(color, p1Thresh, p1Thresh);
 
             // Add the mats together to get a debug image
-            Mat debug = colorImg / 2 + p1Thresh + p4Thresh;
+            Mat debug = colorImg / 2 + p1Thresh;
 
             var pupilSearchOffset = new Point((int)output.PupilEst.X - config.PupilSearchRadius, (int)output.PupilEst.Y - config.PupilSearchRadius);
             var pupilSearchRect = new Rectangle(pupilSearchOffset, new Size(config.PupilSearchRadius * 2, config.PupilSearchRadius * 2));
@@ -318,6 +319,33 @@ namespace OpenIris
                 LineType.AntiAlias,
                 0
             );
+
+            return debug;
+        }
+
+        public Mat DrawP4Debug(OpenIrisDPIOutput output, OpenIrisDPIConfig config)
+        {
+            Mat colorImg = new();
+            CvInvoke.CvtColor(ImgP4, colorImg, ColorConversion.Gray2Bgr);
+
+            Mat p4Thresh = new();
+            CvInvoke.Threshold(ImgP4, p4Thresh, config.P4Threshold, 255, ThresholdType.Binary);
+            CvInvoke.CvtColor(p4Thresh, p4Thresh, ColorConversion.Gray2Bgr);
+
+            // Create a yellow color Mat with the same size as the original image
+            Mat color = new Mat(p4Thresh.Rows, p4Thresh.Cols, DepthType.Cv8U, 3);
+            color.SetTo(new MCvScalar(120.0, 0.0, 120.0));
+
+            // Perform bitwise AND operation to highlight the thresholded region in blue
+            CvInvoke.BitwiseAnd(color, p4Thresh, p4Thresh);
+
+            // Add the mats together to get a debug image
+            Mat debug = colorImg / 2 + p4Thresh;
+
+            var pupilSearchOffset = new Point((int)output.PupilEst.X - config.PupilSearchRadius, (int)output.PupilEst.Y - config.PupilSearchRadius);
+            var pupilSearchRect = new Rectangle(pupilSearchOffset, new Size(config.PupilSearchRadius * 2, config.PupilSearchRadius * 2));
+            pupilSearchRect = ClipRect(pupilSearchRect, new Rectangle(new Point(0, 0), ImgThresh.Size));
+            pupilSearchOffset = pupilSearchRect.Location;
 
             var p4Loc = output.P4Est - ((Size)pupilSearchOffset);
             p4Loc.X -= config.P4RoiRadius;
@@ -350,12 +378,14 @@ namespace OpenIris
         {
             var output = new OpenIrisDPIOutput();
 
-
+            // Preprocess image by cropping and bluring
             ImgCrop = new Mat(imageEye.Image.Mat, config.Crop);
-
             CvInvoke.GaussianBlur(ImgCrop, ImgBlur, new Size(config.BlurSize, config.BlurSize), 0, 0, BorderType.Default);
+
+            // Threshold image to find pupil
             CvInvoke.Threshold(ImgBlur, ImgThresh, config.PupilThreshold, 255, ThresholdType.BinaryInv);
 
+            // Downsample for speedup, take center of mass of dark pixels to extimate pupil center
             var imThreshDsSize = new Size(config.Crop.Width / config.PupilDsFactor, config.Crop.Height / config.PupilDsFactor);
             CvInvoke.Resize(ImgThresh, ImgThreshDs, imThreshDsSize, 0, 0, Inter.Linear);
 
@@ -365,8 +395,12 @@ namespace OpenIris
             output.PupilEst = com;
 
             EyeTrackerDebug.TrackProcessingTime("Pupil CoM");
-            // Find edges of pupil by computing the sobel filter of the thresholded image
 
+            // ########################################
+            // Fit Pupil 
+            // ########################################
+
+            // Find edges of pupil by computing the sobel filter of the thresholded image
             var pupilSearchOffset = new Point((int) com.X - config.PupilSearchRadius, (int) com.Y - config.PupilSearchRadius);
             var pupilSearchRect = new Rectangle(pupilSearchOffset, new Size(config.PupilSearchRadius * 2, config.PupilSearchRadius * 2));
             pupilSearchRect = ClipRect(pupilSearchRect, new Rectangle(new Point(0, 0), ImgThresh.Size));
@@ -379,7 +413,6 @@ namespace OpenIris
             var pupilSearchMask = new Mat(pupilSearchROI.Size, DepthType.Cv8U, 1);
             pupilSearchMask.SetTo(new MCvScalar(0));
             CvInvoke.Circle(pupilSearchMask, new Point(config.PupilSearchRadius, config.PupilSearchRadius), config.PupilSearchRadius, new MCvScalar(255), -1, LineType.EightConnected, 0);
-            // Test if this is error by not filling cuz of mask
             CvInvoke.BitwiseAnd(ImgPupilEdge, pupilSearchMask, ImgPupilEdgeMasked, null);
             
             var edgePts = new VectorOfPoint();
@@ -420,30 +453,35 @@ namespace OpenIris
 
             EyeTrackerDebug.TrackProcessingTime("Pupil Fit");
 
+            // ########################################
+            // Find P1 (potentially outside of pupil)
+            // ########################################
+
             // Mask out the exterior of the pupil
-            var pupilMaskCenter = pupil.Center;
-            pupilMaskCenter.X -= pupilSearchOffset.X;
-            pupilMaskCenter.Y -= pupilSearchOffset.Y;
+            var p1MaskCenter = pupil.Center;
+            p1MaskCenter.X -= pupilSearchOffset.X;
+            p1MaskCenter.Y -= pupilSearchOffset.Y;
 
-            var pupilMaskSize = pupil.Size;
-            pupilMaskSize.Width *= config.PupilMaskPercent;
-            pupilMaskSize.Height *= config.PupilMaskPercent;
+            var p1MaskSize = new SizeF { Height = config.PupilSearchRadius*2, Width = config.PupilSearchRadius*2};
 
-            var pupilMaskEllipse = new RotatedRect(pupilMaskCenter, pupilMaskSize, pupil.Angle);
+            var p1MaskEllipse = new RotatedRect(p1MaskCenter, p1MaskSize, 0);
 
-            var pupilMask = new Mat(pupilSearchRect.Size, DepthType.Cv8U, 1);
-            pupilMask.SetTo(new MCvScalar(0));
-            CvInvoke.Ellipse(pupilMask, pupilMaskEllipse, new MCvScalar(255), -1, LineType.EightConnected);
+            var p1Mask = new Mat(pupilSearchRect.Size, DepthType.Cv8U, 1);
+            p1Mask.SetTo(new MCvScalar(0));
+            CvInvoke.Ellipse(p1Mask, p1MaskEllipse, new MCvScalar(255), -1, LineType.EightConnected);
 
-            var pupilROI = new Mat(ImgBlur, pupilSearchRect);
+            var p1ROI = new Mat(ImgBlur, pupilSearchRect);
 
-            ImgPupil.SetTo(new MCvScalar(0));
-            CvInvoke.BitwiseAnd(pupilROI, pupilROI, ImgPupil, pupilMask);
+            ImgP1.SetTo(new MCvScalar(0));
+            CvInvoke.BitwiseAnd(p1ROI, p1ROI, ImgP1, p1Mask);
 
-            EyeTrackerDebug.TrackProcessingTime("Pupil Mask");
-            // Find P1
+            if (EyeTracker.DEBUG)
+            {
+                ImgP1.CopyTo(ImgP1Debug);
+            }
+
             var imP1DsSize = new Size(pupilSearchRect.Width / config.P1DsFactor, pupilSearchRect.Height / config.P1DsFactor);
-            CvInvoke.Resize(ImgPupil, ImgP1Ds, imP1DsSize, 0, 0, Inter.Linear);
+            CvInvoke.Resize(ImgP1, ImgP1Ds, imP1DsSize, 0, 0, Inter.Linear);
             CvInvoke.Threshold(ImgP1Ds, ImgP1Thresh, config.P1Threshold, 255, ThresholdType.Binary);
 
             var p1COM = GetCenterOfMass(ImgP1Thresh);
@@ -451,43 +489,72 @@ namespace OpenIris
             p1COM.Y *= config.P1DsFactor;
 
             output.P1Est = new Point((int)p1COM.X + pupilSearchOffset.X, (int)p1COM.Y + pupilSearchOffset.Y);
-            if (EyeTracker.DEBUG)
-            {
-                ImgPupil.CopyTo(ImgPupilDebug);
-            }
-            var p1 = LocalizeSpot(ImgPupil, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.PupilThreshold, true);
+
+            var p1Fine = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.PupilThreshold, false);
+            output.P1Fine = new PointF(p1Fine.X + pupilSearchOffset.X, p1Fine.Y + pupilSearchOffset.Y);
+
+            var p1 = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.P1Threshold, true);
             output.P1 = new PointF(p1.X + pupilSearchOffset.X, p1.Y + pupilSearchOffset.Y);
+
             EyeTrackerDebug.TrackProcessingTime("Find P1");
+
+            // ########################################
+            // Find P4 (always within pupil)
+            // ########################################
+
+            var p4MaskCenter = pupil.Center;
+            p4MaskCenter.X -= pupilSearchOffset.X;
+            p4MaskCenter.Y -= pupilSearchOffset.Y;
+
+            var p4MaskSize = pupil.Size;
+            p4MaskSize.Width *= config.PupilMaskPercent;
+            p4MaskSize.Height *= config.PupilMaskPercent;
+
+            var p4MaskEllipse = new RotatedRect(p4MaskCenter, p4MaskSize, pupil.Angle);
+
+            var p4Mask = new Mat(pupilSearchRect.Size, DepthType.Cv8U, 1);
+            p4Mask.SetTo(new MCvScalar(0));
+            CvInvoke.Ellipse(p4Mask, p4MaskEllipse, new MCvScalar(255), -1, LineType.EightConnected);
+
+            ImgP4.SetTo(new MCvScalar(0));
+            CvInvoke.BitwiseAnd(ImgP1, ImgP1, ImgP4, p4Mask);
+
             // Find P4
             Point maxLoc = new(), minLoc = new();
             double minVal = 0.0, maxVal = 0.0;
-            CvInvoke.MinMaxLoc(ImgPupil, ref maxVal, ref minVal, ref minLoc, ref maxLoc);
+            CvInvoke.MinMaxLoc(ImgP4, ref maxVal, ref minVal, ref minLoc, ref maxLoc);
 
             output.P4Est = new Point(maxLoc.X + pupilSearchOffset.X, maxLoc.Y + pupilSearchOffset.Y);
 
-            var p4 = LocalizeSpot(ImgPupil, maxLoc, config.P4RoiRadius, config.P4Threshold, false);
+            var p4 = LocalizeSpot(ImgP4, maxLoc, config.P4RoiRadius, config.P4Threshold, false);
             output.P4 = new PointF(p4.X + pupilSearchOffset.X, p4.Y + pupilSearchOffset.Y);
 
             EyeTrackerDebug.TrackProcessingTime("Find P4");
+
+            // ########################################
+            // Debugging
+            // ########################################
+
             if (EyeTracker.DEBUG)
             {
                 var debugFulMat = DrawFullDebug(output, config);
                 EyeTrackerDebug.AddImage("DPI-Overview", imageEye.WhichEye, debugFulMat.ToImage<Bgr, byte>());
 
-                var debugP1P4Mat = DrawP1P4Debug(output, config);
-                EyeTrackerDebug.AddImage("DPI-P1P4", imageEye.WhichEye, debugP1P4Mat.ToImage<Bgr, byte>());
-
                 var debugPupil = DrawPupilDebug(output, config);
                 EyeTrackerDebug.AddImage("DPI-Pupil", imageEye.WhichEye, debugPupil.ToImage<Bgr, byte>());
+
+                var debugP1Mat = DrawP1Debug(output, config);
+                EyeTrackerDebug.AddImage("DPI-P1", imageEye.WhichEye, debugP1Mat.ToImage<Bgr, byte>());
+
+                var debugP4Mat = DrawP4Debug(output, config);
+                EyeTrackerDebug.AddImage("DPI-P4", imageEye.WhichEye, debugP4Mat.ToImage<Bgr, byte>());
+
             }
+            EyeTrackerDebug.TrackProcessingTime("Debugging");
 
             return output;
         }
 
-        public void Dispose ()
-        {
-
-        }
     }
     
 }
