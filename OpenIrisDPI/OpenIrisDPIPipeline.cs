@@ -53,7 +53,7 @@
                 new Point(eyeROI.Left, eyeROI.Top),
                 new Size((imageEye.Size.Width - eyeROI.Left - eyeROI.Width), (imageEye.Size.Height - eyeROI.Top - eyeROI.Height)));
 
-            dpiConfig.BlurSize = imageEye.WhichEye == Eye.Left ? trackingSettings.BlurSizeLeftEye : trackingSettings.BlurSizeRightEye;
+            dpiConfig.BlurRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.BlurRadiusLeftEye : trackingSettings.BlurRadiusRightEye;
 
             dpiConfig.PupilThreshold = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilThresholdLeftEye : trackingSettings.PupilThresholdRightEye;
 
@@ -61,7 +61,7 @@
 
             dpiConfig.PupilSearchRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilSearchRadiusLeftEye : trackingSettings.PupilSearchRadiusRightEye;
 
-            dpiConfig.PupilMaskPercent = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilMaskPercentLeftEye : trackingSettings.PupilMaskPercentRightEye;
+            dpiConfig.PupilMaskErodeRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilMaskErodeRadiusLeftEye : trackingSettings.PupilMaskErodeRadiusRightEye;
 
             dpiConfig.P1DsFactor = imageEye.WhichEye == Eye.Left ? trackingSettings.P1DsFactorLeftEye : trackingSettings.P1DsFactorRightEye;
 
@@ -172,12 +172,12 @@
     {
         // Gaussian Blur
         [Category("General settings"), Description("Set the radius of gaussian blur to be applied to the image (left eye)")]
-        public int BlurSizeLeftEye { get => blurSizeLeftEye; set => SetProperty(ref blurSizeLeftEye, value, nameof(BlurSizeLeftEye)); }
-        private int blurSizeLeftEye = 5;
+        public int BlurRadiusLeftEye { get => blurRadiusLeftEye; set => SetProperty(ref blurRadiusLeftEye, value, nameof(BlurRadiusLeftEye)); }
+        private int blurRadiusLeftEye = 2;
 
         [Category("General settings"), Description("Set the radius of gaussian blur to be applied to the image (right eye)")]
-        public int BlurSizeRightEye { get => blurSizeLeftEye; set => SetProperty(ref blurSizeRightEye, value, nameof(blurSizeRightEye)); }
-        private int blurSizeRightEye = 5;
+        public int BlurRadiusRightEye { get => blurRadiusLeftEye; set => SetProperty(ref blurRadiusRightEye, value, nameof(blurRadiusRightEye)); }
+        private int blurRadiusRightEye = 2;
 
         // Pupil Threshold
         [Category("Pupil settings"), Description("Threshold to find the dark pixels that belong to the pupil (left eye).")]
@@ -206,15 +206,6 @@
         public int PupilSearchRadiusRightEye { get => pupilSearchRadiusRightEye; set => SetProperty(ref pupilSearchRadiusRightEye, value, nameof(PupilSearchRadiusRightEye)); }
         private int pupilSearchRadiusRightEye = 60;
 
-        // Pupil Mask Percent
-        [Category("Pupil settings"), Description("Percent of the pupil to use to mask out everything outside of the pupil (left eye).")]
-        public float PupilMaskPercentLeftEye { get => pupilMaskPercentLeftEye; set => SetProperty(ref pupilMaskPercentLeftEye, value, nameof(PupilMaskPercentLeftEye)); }
-        private float pupilMaskPercentLeftEye = 0.9f;
-
-        [Category("Pupil settings"), Description("Percent of the pupil to use to mask out everything outside of the pupil (right eye).")]
-        public float PupilMaskPercentRightEye { get => pupilMaskPercentRightEye; set => SetProperty(ref pupilMaskPercentRightEye, value, nameof(PupilMaskPercentRightEye)); }
-        private float pupilMaskPercentRightEye = 0.9f;
-
         // P1 Threshold
         [Category("CR settings"), Description("Threshold for the corneal reflection (1st Purkinje image) (left eye).")]
         public int P1ThresholdLeftEye { get => p1ThresholdLeftEye; set => SetProperty(ref p1ThresholdLeftEye, value, nameof(P1ThresholdLeftEye)); }
@@ -241,6 +232,15 @@
         [Category("CR settings"), Description("Radius of the region of interest used for localizing the corneal reflection. Units of pixels (right eye).")]
         public int P1RoiRadiusRightEye { get => p1RoiRadiusRightEye; set => SetProperty(ref p1RoiRadiusRightEye, value, nameof(P1RoiRadiusRightEye)); }
         private int p1RoiRadiusRightEye = 30;
+
+        // Pupil Mask Percent
+        [Category("P4 settings"), Description("Radius of erosion of pupil used to mask out everything outside of the pupil (left eye).")]
+        public int PupilMaskErodeRadiusLeftEye { get => pupilMaskErodeRadiusLeftEye; set => SetProperty(ref pupilMaskErodeRadiusLeftEye, value, nameof(PupilMaskErodeRadiusLeftEye)); }
+        private int pupilMaskErodeRadiusLeftEye = 3;
+
+        [Category("P4 settings"), Description("Radius of erosion of pupil used to mask out everything outside of the pupil (right eye).")]
+        public int PupilMaskErodeRadiusRightEye { get => pupilMaskErodeRadiusRightEye; set => SetProperty(ref pupilMaskErodeRadiusRightEye, value, nameof(PupilMaskErodeRadiusRightEye)); }
+        private int pupilMaskErodeRadiusRightEye = 3;
 
         // P4 ROI
         [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (left eye).")]
