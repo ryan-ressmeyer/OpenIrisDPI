@@ -421,7 +421,14 @@ namespace OpenIris
             // Mask in a circle of the search radius
             var pupilSearchMask = new Mat(pupilSearchROI.Size, DepthType.Cv16S, 1);
             pupilSearchMask.SetTo(new MCvScalar(0));
-            CvInvoke.Circle(pupilSearchMask, new Point(pupilSearchROI.Width - config.PupilSearchRadius, pupilSearchROI.Height - config.PupilSearchRadius), config.PupilSearchRadius, new MCvScalar(255), -1, LineType.EightConnected, 0);
+            var pupilSearchCenter = new Point((int) com.X - pupilSearchOffset.X, (int) com.Y - pupilSearchOffset.Y);
+
+            CvInvoke.Circle(pupilSearchMask, pupilSearchCenter, config.PupilSearchRadius, new MCvScalar(255), -1, LineType.EightConnected, 0);
+
+            /*if (EyeTracker.DEBUG)
+            {
+                EyeTrackerDebug.AddImage("DPI-test", imageEye.WhichEye, pupilSearchMask.ToImage<Bgr, byte>());
+            }*/
             CvInvoke.BitwiseAnd(ImgPupilEdge, pupilSearchMask, ImgPupilEdgeMasked, null);
             CvInvoke.AbsDiff(ImgPupilEdgeMasked, Mat.Zeros(ImgPupilEdgeMasked.Rows, ImgPupilEdgeMasked.Cols, DepthType.Cv16S, 1), ImgPupilEdgeMasked);
             ImgPupilEdgeMasked.ConvertTo(ImgPupilEdgeMasked, DepthType.Cv8U);
@@ -436,7 +443,7 @@ namespace OpenIris
                 var pupilContour = Mat.Zeros(ImgPupilEdgeMasked.Rows, ImgPupilEdgeMasked.Cols, DepthType.Cv8U, 1);
                 CvInvoke.DrawContours(pupilContour, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255));
                 // Mask out edges
-                CvInvoke.Rectangle(pupilContour, new Rectangle(0, 0, pupilContour.Width, pupilContour.Height), new MCvScalar(0)); 
+                CvInvoke.Rectangle(pupilContour, new Rectangle(0, 0, pupilContour.Width-1, pupilContour.Height-1), new MCvScalar(0)); 
                 CvInvoke.FindNonZero(pupilContour, pupilPtsRaw);
             } // TODO add error
 

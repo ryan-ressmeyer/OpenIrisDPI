@@ -75,7 +75,6 @@
 
             var output = dpi.FindDualPurkinje(imageEye, dpiConfig);
 
-
             var pupil = new PupilData(output.Pupil.Center + new Size(dpiConfig.Crop.Location), output.Pupil.Size, output.Pupil.Angle);
 
             CornealReflectionData[] crs =
@@ -86,14 +85,16 @@
                 new CornealReflectionData(output.P4 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
             };
 
+            var iris = new IrisData(output.PupilEst + new Size(dpiConfig.Crop.Location), dpiConfig.PupilSearchRadius);
+
             // Create the data structure
-            var eyeData = new EyeData()
+            var eyeData = new EyeData
             {
                 WhichEye = imageEye.WhichEye,
                 Timestamp = imageEye.TimeStamp,
                 ImageSize = imageEye.Size,
                 ProcessFrameResult = ProcessFrameResult.Good,
-
+                Iris = iris,
                 Pupil = pupil,
                 CornealReflections = crs,
                 TorsionAngle = 0.0,
@@ -259,6 +260,16 @@
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (right eye).")]
         public int P4RoiRadiusRightEye { get => p4RoiRadiusRightEye; set => SetProperty(ref p4RoiRadiusRightEye, value, nameof(P4RoiRadiusRightEye)); }
         private int p4RoiRadiusRightEye = 250;
+/*
+#pragma warning disable CS0108 // Member hides inherited member; missing new keyword
+        // Having these names reference specific values leads to ImageEyeBox showing correctly
+        public int DarkThresholdLeftEye { get => pupilThresholdLeftEye; set => SetProperty(ref pupilThresholdLeftEye, value, nameof(DarkThresholdLeftEye)); }
 
+        public int DarkThresholdRightEye { get => pupilThresholdRightEye; set => SetProperty(ref pupilThresholdRightEye, value, nameof(DarkThresholdRightEye)); }
+
+        public int BrightThresholdLeftEye { get => p1ThresholdLeftEye; set => SetProperty(ref p1ThresholdLeftEye, value, nameof(BrightThresholdLeftEye)); }
+
+        public int BrightThresholdRightEye { get => p1ThresholdRightEye; set => SetProperty(ref p1ThresholdRightEye, value, nameof(BrightThresholdRightEye)); }
+#pragma warning restore CS0108 // Member hides inherited member; missing new keyword*/
     }
 }
