@@ -183,11 +183,11 @@
         // Pupil Threshold
         [Category("Pupil settings"), Description("Threshold to find the dark pixels that belong to the pupil (left eye).")]
         public int PupilThresholdLeftEye { get => pupilThresholdLeftEye; set => SetProperty(ref pupilThresholdLeftEye, value, nameof(PupilThresholdLeftEye)); }
-        private int pupilThresholdLeftEye = 60;
+        private int pupilThresholdLeftEye = 50;
 
         [Category("Pupil settings"), Description("Threshold to find the dark pixels that belong to the pupil (right eye).")]
         public int PupilThresholdRightEye { get => pupilThresholdRightEye; set => SetProperty(ref pupilThresholdRightEye, value, nameof(PupilThresholdRightEye)); }
-        private int pupilThresholdRightEye = 60;
+        private int pupilThresholdRightEye = 50;
 
         // Pupil Downsampling Factor
         [Category("Pupil settings"), Description("Downsampling factor to find the pupil center of mass (left eye).")]
@@ -201,20 +201,20 @@
         // Pupil Search Radius
         [Category("Pupil settings"), Description("Search radius for the pupil boarder. Units of pixels (left eye).")]
         public int PupilSearchRadiusLeftEye { get => pupilSearchRadiusLeftEye; set => SetProperty(ref pupilSearchRadiusLeftEye, value, nameof(PupilSearchRadiusLeftEye)); }
-        private int pupilSearchRadiusLeftEye = 60;
+        private int pupilSearchRadiusLeftEye = 50;
 
         [Category("Pupil settings"), Description("Search radius for the pupil boarder. Units of pixels (right eye).")]
         public int PupilSearchRadiusRightEye { get => pupilSearchRadiusRightEye; set => SetProperty(ref pupilSearchRadiusRightEye, value, nameof(PupilSearchRadiusRightEye)); }
-        private int pupilSearchRadiusRightEye = 60;
+        private int pupilSearchRadiusRightEye = 50;
 
         // P1 Threshold
         [Category("CR settings"), Description("Threshold for the corneal reflection (1st Purkinje image) (left eye).")]
         public int P1ThresholdLeftEye { get => p1ThresholdLeftEye; set => SetProperty(ref p1ThresholdLeftEye, value, nameof(P1ThresholdLeftEye)); }
-        private int p1ThresholdLeftEye = 250;
+        private int p1ThresholdLeftEye = 245;
 
         [Category("CR settings"), Description("Threshold for the corneal reflection (1st Purkinje image) (right eye).")]
         public int P1ThresholdRightEye { get => p1ThresholdRightEye; set => SetProperty(ref p1ThresholdRightEye, value, nameof(P1ThresholdRightEye)); }
-        private int p1ThresholdRightEye = 250;
+        private int p1ThresholdRightEye = 245;
 
         // P1 Downsample Ratio
         [Category("CR settings"), Description("Downsampling ratio for finding the approximate CR center (left eye).")]
@@ -228,11 +228,11 @@
         // P1 ROI 
         [Category("CR settings"), Description("Radius of the region of interest used for localizing the corneal reflection. Units of pixels (left eye).")]
         public int P1RoiRadiusLeftEye { get => p1RoiRadiusLeftEye; set => SetProperty(ref p1RoiRadiusLeftEye, value, nameof(P1RoiRadiusLeftEye)); }
-        private int p1RoiRadiusLeftEye = 30;
+        private int p1RoiRadiusLeftEye = 12;
 
         [Category("CR settings"), Description("Radius of the region of interest used for localizing the corneal reflection. Units of pixels (right eye).")]
         public int P1RoiRadiusRightEye { get => p1RoiRadiusRightEye; set => SetProperty(ref p1RoiRadiusRightEye, value, nameof(P1RoiRadiusRightEye)); }
-        private int p1RoiRadiusRightEye = 30;
+        private int p1RoiRadiusRightEye = 12;
 
         // Pupil Mask Percent
         [Category("P4 settings"), Description("Radius of erosion of pupil used to mask out everything outside of the pupil (left eye).")]
@@ -246,20 +246,20 @@
         // P4 ROI
         [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (left eye).")]
         public int P4ThresholdLeftEye { get => p4ThresholdLeftEye; set => SetProperty(ref p4ThresholdLeftEye, value, nameof(P4ThresholdLeftEye)); }
-        private int p4ThresholdLeftEye = 20;
+        private int p4ThresholdLeftEye = 40;
 
         [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (right eye).")]
         public int P4ThresholdRightEye { get => p4ThresholdRightEye; set => SetProperty(ref p4ThresholdRightEye, value, nameof(P4ThresholdRightEye)); }
-        private int p4ThresholdRightEye = 20;
+        private int p4ThresholdRightEye = 40;
 
         // P4 ROI
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (left eye).")]
         public int P4RoiRadiusLeftEye { get => p4RoiRadiusLeftEye; set => SetProperty(ref p4RoiRadiusLeftEye, value, nameof(P4RoiRadiusLeftEye)); }
-        private int p4RoiRadiusLeftEye = 250;
+        private int p4RoiRadiusLeftEye = 8;
 
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (right eye).")]
         public int P4RoiRadiusRightEye { get => p4RoiRadiusRightEye; set => SetProperty(ref p4RoiRadiusRightEye, value, nameof(P4RoiRadiusRightEye)); }
-        private int p4RoiRadiusRightEye = 250;
+        private int p4RoiRadiusRightEye = 8;
 /*
 #pragma warning disable CS0108 // Member hides inherited member; missing new keyword
         // Having these names reference specific values leads to ImageEyeBox showing correctly
