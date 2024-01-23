@@ -14,6 +14,10 @@
     using System.Linq;
     using System.Collections.Generic;
     using OpenIris.UI;
+    using System.Runtime;
+    using Emgu.CV.Cuda;
+    using Emgu.CV.Ocl;
+    using Emgu.CV.Util;
 
     /// <summary>
     /// Class in charge of processing images and tracking the pupil and iris to obtain the eye
@@ -34,18 +38,8 @@
             base.Dispose();
         }
 
-        /// <summary>
-        /// Process images.
-        /// </summary>
-        /// <param name="imageEye"></param>
-        /// <param name="eyeCalibrationParameters"></param>
-        /// <returns></returns>
-        public override (EyeData data, Image<Gray, byte>? imateTorsion) Process(ImageEye imageEye, EyeCalibration eyeCalibrationParameters)
+        private OpenIrisDPIConfig ConvertSettingsToDPIConfig(ImageEye imageEye, EyeTrackingPipelineDPISettings trackingSettings)
         {
-            var trackingSettings = Settings as EyeTrackingPipelineDPISettings ?? throw new Exception("Wrong type of settings");
-
-            // Cropping rectangle and eye ROI (minimum size 20x20 pix)
-
             var dpiConfig = new OpenIrisDPIConfig();
 
             var eyeROI = imageEye.WhichEye == Eye.Left ? Settings.CroppingLeftEye : Settings.CroppingRightEye;
@@ -69,12 +63,15 @@
 
             dpiConfig.P1RoiRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.P1RoiRadiusLeftEye : trackingSettings.P1RoiRadiusRightEye;
 
-            dpiConfig.P4Threshold = imageEye.WhichEye == Eye.Left ? trackingSettings.P4ThresholdLeftEye : trackingSettings.P4ThresholdRightEye;
+            //dpiConfig.P4Threshold = imageEye.WhichEye == Eye.Left ? trackingSettings.P4ThresholdLeftEye : trackingSettings.P4ThresholdRightEye;
 
             dpiConfig.P4RoiRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.P4RoiRadiusLeftEye : trackingSettings.P4RoiRadiusRightEye;
 
-            var output = dpi.FindDualPurkinje(imageEye, dpiConfig);
+            return dpiConfig;
+        }
 
+        private EyeData ConvertDPIOutputToEyeData(ImageEye imageEye, OpenIrisDPIConfig dpiConfig, OpenIrisDPIOutput output)
+        {
             var pupil = new PupilData(output.Pupil.Center + new Size(dpiConfig.Crop.Location), output.Pupil.Size, output.Pupil.Angle);
 
             CornealReflectionData[] crs =
@@ -102,7 +99,55 @@
                 DataQuality = 100.0,
             };
 
-            return (eyeData, null);
+            return eyeData;
+        }
+
+        private EyeData ProcessImage(ImageEye imageEye, EyeTrackingPipelineDPISettings trackingSettings)
+        {
+            // Cropping rectangle and eye ROI (minimum size 20x20 pix)
+
+            var dpiConfig = ConvertSettingsToDPIConfig(imageEye, trackingSettings); 
+
+            var output = dpi.FindDualPurkinje(imageEye, dpiConfig);
+
+            var eyeData = ConvertDPIOutputToEyeData(imageEye, dpiConfig, output);
+
+            return eyeData;
+        }
+
+        /// <summary>
+        /// Process images.
+        /// </summary>
+        /// <param name="imageEye"></param>
+        /// <param name="eyeCalibrationParameters"></param>
+        /// <returns></returns>
+        public override (EyeData data, Image<Gray, byte>? imateTorsion) Process(ImageEye imageEye, EyeCalibration eyeCalibrationParameters)
+        {
+            var trackingSettings = Settings as EyeTrackingPipelineDPISettings ?? throw new Exception("Wrong type of settings");
+
+            return (this.ProcessImage(imageEye, trackingSettings), null);
+        }
+
+
+        public override IInputArray? UpdatePipelineEyeImage(Eye whichEye, EyeTrackerImagesAndData dataAndImages)
+        {
+            EyeTrackingPipelineDPISettings? settings = dataAndImages.TrackingSettings as EyeTrackingPipelineDPISettings;
+            if (settings == null)
+            {
+                return null;
+            }
+
+            ImageEye? image = dataAndImages.Images[whichEye];
+            if (image == null)
+            {
+                return null;
+            }
+
+            var dpiConfig = ConvertSettingsToDPIConfig(image, settings);
+
+            var output = dpi.FindDualPurkinje(image, dpiConfig);
+
+            return dpi.DrawFullDebug(output, dpiConfig);
         }
 
         /// <summary>
@@ -144,12 +189,14 @@
             };
             list.Add(("CR ROI Radius", new RangeDouble(0, 100), settingName));
 
+            /*
             settingName = WhichEye switch
             {
                 Eye.Left => nameof(theSettings.P4ThresholdLeftEye),
                 Eye.Right => nameof(theSettings.P4ThresholdRightEye),
             };
             list.Add(("P4 Threshold", new RangeDouble(0, 255), settingName));
+            */
 
             settingName = WhichEye switch
             {
@@ -177,7 +224,7 @@
         private int blurRadiusLeftEye = 2;
 
         [Category("General settings"), Description("Set the radius of gaussian blur to be applied to the image (right eye)")]
-        public int BlurRadiusRightEye { get => blurRadiusLeftEye; set => SetProperty(ref blurRadiusRightEye, value, nameof(blurRadiusRightEye)); }
+        public int BlurRadiusRightEye { get => blurRadiusRightEye; set => SetProperty(ref blurRadiusRightEye, value, nameof(blurRadiusRightEye)); }
         private int blurRadiusRightEye = 2;
 
         // Pupil Threshold
@@ -244,6 +291,7 @@
         private int pupilMaskErodeRadiusRightEye = 3;
 
         // P4 ROI
+        /*
         [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (left eye).")]
         public int P4ThresholdLeftEye { get => p4ThresholdLeftEye; set => SetProperty(ref p4ThresholdLeftEye, value, nameof(P4ThresholdLeftEye)); }
         private int p4ThresholdLeftEye = 40;
@@ -251,6 +299,7 @@
         [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (right eye).")]
         public int P4ThresholdRightEye { get => p4ThresholdRightEye; set => SetProperty(ref p4ThresholdRightEye, value, nameof(P4ThresholdRightEye)); }
         private int p4ThresholdRightEye = 40;
+        */
 
         // P4 ROI
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (left eye).")]
@@ -260,16 +309,5 @@
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (right eye).")]
         public int P4RoiRadiusRightEye { get => p4RoiRadiusRightEye; set => SetProperty(ref p4RoiRadiusRightEye, value, nameof(P4RoiRadiusRightEye)); }
         private int p4RoiRadiusRightEye = 8;
-/*
-#pragma warning disable CS0108 // Member hides inherited member; missing new keyword
-        // Having these names reference specific values leads to ImageEyeBox showing correctly
-        public int DarkThresholdLeftEye { get => pupilThresholdLeftEye; set => SetProperty(ref pupilThresholdLeftEye, value, nameof(DarkThresholdLeftEye)); }
-
-        public int DarkThresholdRightEye { get => pupilThresholdRightEye; set => SetProperty(ref pupilThresholdRightEye, value, nameof(DarkThresholdRightEye)); }
-
-        public int BrightThresholdLeftEye { get => p1ThresholdLeftEye; set => SetProperty(ref p1ThresholdLeftEye, value, nameof(BrightThresholdLeftEye)); }
-
-        public int BrightThresholdRightEye { get => p1ThresholdRightEye; set => SetProperty(ref p1ThresholdRightEye, value, nameof(BrightThresholdRightEye)); }
-#pragma warning restore CS0108 // Member hides inherited member; missing new keyword*/
     }
 }
