@@ -271,18 +271,23 @@ namespace OpenIris
             pupilSearchRect = ClipRect(pupilSearchRect, new Rectangle(new Point(0, 0), ImgThresh.Size));
             pupilSearchOffset = pupilSearchRect.Location;
 
-            var imgDebug = pupilEdge.ToImage<Bgr, byte>();
-            for (int i = 0; i < output.PupilPoints.Size; i++)
+            var debug = pupilEdge.ToImage<Bgr, byte>();
+
+            if (output.PupilPoints.Size > 0)
             {
-                var point = output.PupilPoints[i];
-                var row = point.Y - pupilSearchOffset.Y;
-                var col = point.X - pupilSearchOffset.X;
-                imgDebug[row, col] = new Bgr(0, 255, 255);
+                var pupilContour = new List<Point>(output.PupilPoints.Size);
+                for (int i = 0; i < output.PupilPoints.Size; i++)
+                {
+                    var point = output.PupilPoints[i];
+                    pupilContour.Add(new Point(point.X - pupilSearchOffset.X, point.Y - pupilSearchOffset.Y));
+                }
+                var pupilContourVec = new VectorOfPoint(pupilContour.ToArray());
+                CvInvoke.DrawContours(debug, new VectorOfVectorOfPoint(pupilContourVec), 0, new MCvScalar(0, 255, 255));
             }
-            var debug = imgDebug;
 
             var ell = output.Pupil;
             ell.Center -= new Size(pupilSearchOffset);
+            CvInvoke.Circle(debug, new Point((int) ell.Center.X, (int) ell.Center.Y), 2, new MCvScalar(0, 255, 0), -1);
             CvInvoke.Ellipse(debug, ell, new MCvScalar(0, 255, 0), 1);
  
             return debug.Mat;
