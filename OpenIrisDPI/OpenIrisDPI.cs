@@ -89,10 +89,10 @@ namespace OpenIris
             
         }
 
-        public PointF GetCenterOfMass(Mat img)
+        public PointF GetCenterOfMass(Mat img, bool binary = false)
         {
 
-            Moments m = CvInvoke.Moments(img);
+            Moments m = CvInvoke.Moments(img, binary);
 
             return new PointF(
                 Convert.ToSingle(m.M10 / (m.M00 + 1e-8)),
@@ -163,7 +163,7 @@ namespace OpenIris
             double mu20 = moments.Mu20 / moments.M00;
             double mu02 = moments.Mu02 / moments.M00;
 
-            double theta = 0.5 * Math.Atan2(2 * mu11, (mu20 - mu02)); // Rotation angle
+            double theta = 0.5 * Math.Atan2(2 * mu11, (mu20 - mu02)) * 180 / Math.PI + 90; // Rotation angle
 
             double a = Math.Sqrt(2 * ((mu20 + mu02) + Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))); // Semi-major axis
             double b = Math.Sqrt(2 * ((mu20 + mu02) - Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))); // Semi-minor axis
@@ -181,7 +181,7 @@ namespace OpenIris
 
             // Create a blue color Mat with the same size as the original image
             Mat blue = new Mat(ImgBlur.Rows, ImgBlur.Cols, DepthType.Cv8U, 3);
-            blue.SetTo(new MCvScalar(120.0, 0.0, 0.0));
+            blue.SetTo(new MCvScalar(70.0, 0.0, 0.0));
 
             // Perform bitwise AND operation to highlight the thresholded region in blue
             Mat result = new Mat();
@@ -393,6 +393,8 @@ namespace OpenIris
 
         public OpenIrisDPIOutput FindDualPurkinje(ImageEye imageEye, OpenIrisDPIConfig config)
         {
+            bool debug = EyeTracker.DEBUG; // need to stash DEBUG in case it changes in the middle of a loop
+
             var output = new OpenIrisDPIOutput();
 
             if (imageEye.Size.IsEmpty)
@@ -408,9 +410,9 @@ namespace OpenIris
 
             // Downsample for speedup, take center of mass of dark pixels to extimate pupil center
             var imThreshDsSize = new Size(config.Crop.Width / config.PupilDsFactor, config.Crop.Height / config.PupilDsFactor);
-            CvInvoke.Resize(ImgThresh, ImgThreshDs, imThreshDsSize, 0, 0, Inter.Linear);
+            CvInvoke.Resize(ImgThresh, ImgThreshDs, imThreshDsSize, 0, 0, Inter.Nearest);
 
-            var com = GetCenterOfMass(ImgThreshDs);
+            var com = GetCenterOfMass(ImgThreshDs, true);
             com.X *= config.PupilDsFactor;
             com.Y *= config.PupilDsFactor;
             output.PupilEst = com;
@@ -433,7 +435,7 @@ namespace OpenIris
             ImgPupilEdge.ConvertTo(ImgPupilEdge, DepthType.Cv8U);
 
             // Mask in a circle of the search radius
-            var pupilSearchMask = new Mat(pupilSearchROI.Size, DepthType.Cv8U, 1);
+            var pupilSearchMask = new Mat(ImgPupilEdge.Size, DepthType.Cv8U, 1);
             pupilSearchMask.SetTo(new MCvScalar(0));
             var pupilSearchCenter = new Point((int) com.X - pupilSearchOffset.X, (int) com.Y - pupilSearchOffset.Y);
             CvInvoke.Circle(pupilSearchMask, pupilSearchCenter, config.PupilSearchRadius, new MCvScalar(255), -1, LineType.EightConnected, 0);
@@ -536,7 +538,7 @@ namespace OpenIris
             ImgP1.SetTo(new MCvScalar(0));
             CvInvoke.BitwiseAnd(p1ROI, p1ROI, ImgP1, p1Mask);
 
-            if (EyeTracker.DEBUG)
+            if (debug)
             {
                 ImgP1.CopyTo(ImgP1Debug);
             }
@@ -603,7 +605,7 @@ namespace OpenIris
             // Debugging
             // ########################################
 
-            if (EyeTracker.DEBUG)
+            if (debug)
             {
                 var debugFulMat = DrawFullDebug(output, config);
                 EyeTrackerDebug.AddImage("DPI-Overview", imageEye.WhichEye, debugFulMat.ToImage<Bgr, byte>());

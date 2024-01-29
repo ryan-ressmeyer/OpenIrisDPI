@@ -27,7 +27,7 @@
     public sealed class EyeTrackingPipelineDPI : EyeTrackingPipelineBase
     {
         private OpenIrisDPI dpi = new OpenIrisDPI();
-
+        private OpenIrisDPI dpi_gui = new OpenIrisDPI();
         /// <summary>
         /// Disposes objects.
         /// </summary>
@@ -145,9 +145,9 @@
 
             var dpiConfig = ConvertSettingsToDPIConfig(image, settings);
 
-            var output = dpi.FindDualPurkinje(image, dpiConfig);
+            var output = dpi_gui.FindDualPurkinje(image, dpiConfig);
 
-            return dpi.DrawFullDebug(output, dpiConfig);
+            return dpi_gui.DrawFullDebug(output, dpiConfig);
         }
 
         /// <summary>
