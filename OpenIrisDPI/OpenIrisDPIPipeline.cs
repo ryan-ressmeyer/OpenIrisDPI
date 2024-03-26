@@ -18,6 +18,7 @@
     using Emgu.CV.Cuda;
     using Emgu.CV.Ocl;
     using Emgu.CV.Util;
+    using System.Diagnostics;
 
     /// <summary>
     /// Class in charge of processing images and tracking the pupil and iris to obtain the eye
@@ -51,29 +52,51 @@
 
             dpiConfig.PupilThreshold = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilThresholdLeftEye : trackingSettings.PupilThresholdRightEye;
 
-            dpiConfig.PupilDsFactor = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilDsFactorLeftEye : trackingSettings.PupilDsFactorRightEye;
 
             dpiConfig.PupilSearchRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilSearchRadiusLeftEye : trackingSettings.PupilSearchRadiusRightEye;
 
+            float dsFactor = imageEye.WhichEye == Eye.Left ? trackingSettings.DsFactorLeftEye : trackingSettings.DsFactorRightEye;
+            
+            if (dsFactor <= 0.0)
+            {
+                dpiConfig.PupilDsFactor = 1;
+
+                dpiConfig.PupilFitDsFactor = 1;
+
+                dpiConfig.P1DsFactor = 1;
+            } else
+            {
+                dpiConfig.PupilDsFactor = (int) Math.Ceiling(dpiConfig.PupilSearchRadius * .1 * dsFactor);
+
+                dpiConfig.PupilFitDsFactor = (int) Math.Ceiling(dpiConfig.PupilSearchRadius * .02 * dsFactor);
+
+                dpiConfig.P1DsFactor = (int) Math.Ceiling(dpiConfig.PupilSearchRadius * .01 * dsFactor);
+            }
+
             dpiConfig.PupilMaskErodeRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilMaskErodeRadiusLeftEye : trackingSettings.PupilMaskErodeRadiusRightEye;
 
-            dpiConfig.P1DsFactor = imageEye.WhichEye == Eye.Left ? trackingSettings.P1DsFactorLeftEye : trackingSettings.P1DsFactorRightEye;
 
             dpiConfig.P1Threshold = imageEye.WhichEye == Eye.Left ? trackingSettings.P1ThresholdLeftEye : trackingSettings.P1ThresholdRightEye;
 
             dpiConfig.P1RoiRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.P1RoiRadiusLeftEye : trackingSettings.P1RoiRadiusRightEye;
 
-            //dpiConfig.P4Threshold = imageEye.WhichEye == Eye.Left ? trackingSettings.P4ThresholdLeftEye : trackingSettings.P4ThresholdRightEye;
 
             dpiConfig.P4RoiRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.P4RoiRadiusLeftEye : trackingSettings.P4RoiRadiusRightEye;
+
+            dpiConfig.PupilAlgorithm = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilAlgorithmLeftEye : trackingSettings.PupilAlgorithmRightEye;
 
             return dpiConfig;
         }
 
-        private EyeData ConvertDPIOutputToEyeData(ImageEye imageEye, OpenIrisDPIConfig dpiConfig, OpenIrisDPIOutput output)
+
+        /// <summary>
+        /// Convert OpenIrisDPIOutput to EyeData.
+        /// </summary>
+        private EyeData ConvertDPIOutputToEyeData(OpenIrisDPIOutput output, ImageEye imageEye, OpenIrisDPIConfig dpiConfig)
         {
             var pupil = new PupilData(output.Pupil.Center + new Size(dpiConfig.Crop.Location), output.Pupil.Size, output.Pupil.Angle);
 
+            // Store Various Estimators in the 
             CornealReflectionData[] crs =
             {
                 new CornealReflectionData(output.P1 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
@@ -82,6 +105,7 @@
                 new CornealReflectionData(output.P4 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
             };
 
+            // Store Pupil Search Radius in the Iris
             var iris = new IrisData(output.PupilEst + new Size(dpiConfig.Crop.Location), dpiConfig.PupilSearchRadius);
 
             // Create the data structure
@@ -102,6 +126,11 @@
             return eyeData;
         }
 
+        
+        /// <summary>
+        /// Process an input ImageEye using a given set of settings using the DPI algorithm.
+        /// </summary>
+        /// <returns></returns>
         private EyeData ProcessImage(ImageEye imageEye, EyeTrackingPipelineDPISettings trackingSettings)
         {
             // Cropping rectangle and eye ROI (minimum size 20x20 pix)
@@ -110,7 +139,7 @@
 
             var output = dpi.FindDualPurkinje(imageEye, dpiConfig);
 
-            var eyeData = ConvertDPIOutputToEyeData(imageEye, dpiConfig, output);
+            var eyeData = ConvertDPIOutputToEyeData(output, imageEye, dpiConfig);
 
             return eyeData;
         }
@@ -129,6 +158,10 @@
         }
 
 
+        /// <summary>
+        /// Draw the UI images.
+        /// </summary>
+        /// <returns></returns>
         public override IInputArray? UpdatePipelineEyeImage(Eye whichEye, EyeTrackerImagesAndData dataAndImages)
         {
             EyeTrackingPipelineDPISettings? settings = dataAndImages.TrackingSettings as EyeTrackingPipelineDPISettings;
@@ -189,15 +222,6 @@
             };
             list.Add(("CR ROI Radius", new RangeDouble(0, 100), settingName));
 
-            /*
-            settingName = WhichEye switch
-            {
-                Eye.Left => nameof(theSettings.P4ThresholdLeftEye),
-                Eye.Right => nameof(theSettings.P4ThresholdRightEye),
-            };
-            list.Add(("P4 Threshold", new RangeDouble(0, 255), settingName));
-            */
-
             settingName = WhichEye switch
             {
                 Eye.Left => nameof(theSettings.P4RoiRadiusLeftEye),
@@ -230,29 +254,29 @@
         // Pupil Threshold
         [Category("Pupil settings"), Description("Threshold to find the dark pixels that belong to the pupil (left eye).")]
         public int PupilThresholdLeftEye { get => pupilThresholdLeftEye; set => SetProperty(ref pupilThresholdLeftEye, value, nameof(PupilThresholdLeftEye)); }
-        private int pupilThresholdLeftEye = 50;
+        private int pupilThresholdLeftEye = 30;
 
         [Category("Pupil settings"), Description("Threshold to find the dark pixels that belong to the pupil (right eye).")]
         public int PupilThresholdRightEye { get => pupilThresholdRightEye; set => SetProperty(ref pupilThresholdRightEye, value, nameof(PupilThresholdRightEye)); }
-        private int pupilThresholdRightEye = 50;
-
-        // Pupil Downsampling Factor
-        [Category("Pupil settings"), Description("Downsampling factor to find the pupil center of mass (left eye).")]
-        public int PupilDsFactorLeftEye { get => pupilDsFactorLeftEye; set => SetProperty(ref pupilDsFactorLeftEye, value, nameof(PupilDsFactorLeftEye)); }
-        private int pupilDsFactorLeftEye = 16;
-
-        [Category("Pupil settings"), Description("Downsampling factor to find the pupil center of mass (right eye).")]
-        public int PupilDsFactorRightEye { get => pupilDsFactorRightEye; set => SetProperty(ref pupilDsFactorRightEye, value, nameof(PupilDsFactorRightEye)); }
-        private int pupilDsFactorRightEye = 16;
+        private int pupilThresholdRightEye = 30;
 
         // Pupil Search Radius
         [Category("Pupil settings"), Description("Search radius for the pupil boarder. Units of pixels (left eye).")]
         public int PupilSearchRadiusLeftEye { get => pupilSearchRadiusLeftEye; set => SetProperty(ref pupilSearchRadiusLeftEye, value, nameof(PupilSearchRadiusLeftEye)); }
-        private int pupilSearchRadiusLeftEye = 50;
+        private int pupilSearchRadiusLeftEye = 200;
 
         [Category("Pupil settings"), Description("Search radius for the pupil boarder. Units of pixels (right eye).")]
         public int PupilSearchRadiusRightEye { get => pupilSearchRadiusRightEye; set => SetProperty(ref pupilSearchRadiusRightEye, value, nameof(PupilSearchRadiusRightEye)); }
-        private int pupilSearchRadiusRightEye = 50;
+        private int pupilSearchRadiusRightEye = 200;
+
+        // Pupil Algorithm
+        [Category("Pupil settings"), Description("Algorithm to use for pupil fitting (left eye).")]
+        public PupilAlgorithm PupilAlgorithmLeftEye { get => pupilAlgorithmLeftEye; set => SetProperty(ref pupilAlgorithmLeftEye, value, nameof(PupilAlgorithmLeftEye)); }
+        private PupilAlgorithm pupilAlgorithmLeftEye = PupilAlgorithm.Moments;
+
+        [Category("Pupil settings"), Description("Algorithm to use for pupil fitting (left eye).")]
+        public PupilAlgorithm PupilAlgorithmRightEye { get => pupilAlgorithmRightEye; set => SetProperty(ref pupilAlgorithmRightEye, value, nameof(PupilAlgorithmRightEye)); }
+        private PupilAlgorithm pupilAlgorithmRightEye = PupilAlgorithm.Moments;
 
         // P1 Threshold
         [Category("CR settings"), Description("Threshold for the corneal reflection (1st Purkinje image) (left eye).")]
@@ -263,23 +287,14 @@
         public int P1ThresholdRightEye { get => p1ThresholdRightEye; set => SetProperty(ref p1ThresholdRightEye, value, nameof(P1ThresholdRightEye)); }
         private int p1ThresholdRightEye = 245;
 
-        // P1 Downsample Ratio
-        [Category("CR settings"), Description("Downsampling ratio for finding the approximate CR center (left eye).")]
-        public int P1DsFactorLeftEye { get => p1DsFactorLeftEye; set => SetProperty(ref p1DsFactorLeftEye, value, nameof(P1DsFactorLeftEye)); }
-        private int p1DsFactorLeftEye = 2;
-
-        [Category("CR settings"), Description("Downsampling ratio for finding the approximate CR center (right eye).")]
-        public int P1DsFactorRightEye { get => p1DsFactorRightEye; set => SetProperty(ref p1DsFactorRightEye, value, nameof(P1DsFactorRightEye)); }
-        private int p1DsFactorRightEye = 2;
-
         // P1 ROI 
         [Category("CR settings"), Description("Radius of the region of interest used for localizing the corneal reflection. Units of pixels (left eye).")]
         public int P1RoiRadiusLeftEye { get => p1RoiRadiusLeftEye; set => SetProperty(ref p1RoiRadiusLeftEye, value, nameof(P1RoiRadiusLeftEye)); }
-        private int p1RoiRadiusLeftEye = 12;
+        private int p1RoiRadiusLeftEye = 40;
 
         [Category("CR settings"), Description("Radius of the region of interest used for localizing the corneal reflection. Units of pixels (right eye).")]
         public int P1RoiRadiusRightEye { get => p1RoiRadiusRightEye; set => SetProperty(ref p1RoiRadiusRightEye, value, nameof(P1RoiRadiusRightEye)); }
-        private int p1RoiRadiusRightEye = 12;
+        private int p1RoiRadiusRightEye = 40;
 
         // Pupil Mask Percent
         [Category("P4 settings"), Description("Radius of erosion of pupil used to mask out everything outside of the pupil (left eye).")]
@@ -291,23 +306,21 @@
         private int pupilMaskErodeRadiusRightEye = 3;
 
         // P4 ROI
-        /*
-        [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (left eye).")]
-        public int P4ThresholdLeftEye { get => p4ThresholdLeftEye; set => SetProperty(ref p4ThresholdLeftEye, value, nameof(P4ThresholdLeftEye)); }
-        private int p4ThresholdLeftEye = 40;
-
-        [Category("P4 settings"), Description("Threshold for localizing P4. Set just above pupil dark level (right eye).")]
-        public int P4ThresholdRightEye { get => p4ThresholdRightEye; set => SetProperty(ref p4ThresholdRightEye, value, nameof(P4ThresholdRightEye)); }
-        private int p4ThresholdRightEye = 40;
-        */
-
-        // P4 ROI
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (left eye).")]
         public int P4RoiRadiusLeftEye { get => p4RoiRadiusLeftEye; set => SetProperty(ref p4RoiRadiusLeftEye, value, nameof(P4RoiRadiusLeftEye)); }
-        private int p4RoiRadiusLeftEye = 8;
+        private int p4RoiRadiusLeftEye = 15;
 
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (right eye).")]
         public int P4RoiRadiusRightEye { get => p4RoiRadiusRightEye; set => SetProperty(ref p4RoiRadiusRightEye, value, nameof(P4RoiRadiusRightEye)); }
-        private int p4RoiRadiusRightEye = 8;
+        private int p4RoiRadiusRightEye = 15;
+
+        // Pupil Downsampling Factor
+        [Category("Performance Settings"), Description("Downsampling factor (left eye).")]
+        public float DsFactorLeftEye { get => dsFactorLeftEye; set => SetProperty(ref dsFactorLeftEye, value, nameof(DsFactorLeftEye)); }
+        private float dsFactorLeftEye = 1.0f;
+
+        [Category("Performance Settings"), Description("Downsampling factor (right eye).")]
+        public float DsFactorRightEye { get => dsFactorRightEye; set => SetProperty(ref dsFactorRightEye, value, nameof(DsFactorRightEye)); }
+        private float dsFactorRightEye = 1.0f;
     }
 }

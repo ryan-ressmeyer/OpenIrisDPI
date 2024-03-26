@@ -20,6 +20,7 @@ namespace OpenIris
     using Emgu.CV.Stitching;
     using OpenIris.ImageProcessing;
     using static System.Net.Mime.MediaTypeNames;
+    using System.Security.Policy;
 
     public class OpenIrisDPIOutput
     {
@@ -45,6 +46,12 @@ namespace OpenIris
         }
     }
 
+    public enum PupilAlgorithm
+    {
+        Moments,
+        EllipseFit,
+    }
+
     public class OpenIrisDPIConfig
     {
         public Rectangle Crop { get; set; }
@@ -53,14 +60,17 @@ namespace OpenIris
         public int PupilDsFactor { get; set; }
         public int PupilSearchRadius { get; set; }
 
+        public int PupilFitDsFactor { get; set; }
+
         public int P1DsFactor { get; set; }
         public int P1Threshold { get; set; }
         public int P1RoiRadius { get; set; }
 
         public int PupilMaskErodeRadius { get; set; }
-        //public int P4Threshold { get; set; }
 
         public int P4RoiRadius { get; set; }
+
+        public PupilAlgorithm PupilAlgorithm { get; set; }
     }
 
     public sealed class OpenIrisDPI : IDisposable
@@ -71,9 +81,9 @@ namespace OpenIris
         private Mat ImgBlur = new();
         private Mat ImgThresh = new();
         private Mat ImgThreshDs = new();
+        private Mat ImgPupilMasked = new();
         private Mat ImgPupilLap = new();
         private Mat ImgPupilEdge = new();
-        private Mat ImgPupilEdgeMasked = new();
         private Mat ImgP1 = new();
         private Mat ImgP1Debug = new();
         private Mat ImgP1Ds = new();
@@ -89,15 +99,30 @@ namespace OpenIris
             
         }
 
-        public PointF GetCenterOfMass(Mat img, bool binary = false)
+
+        public PointF GetCenterOfMass(Mat img, int ds = 1, bool binary = false)
         {
+            if (ds < 1) ds = 1;
 
-            Moments m = CvInvoke.Moments(img, binary);
+            Mat imgFit;
+            if (ds > 1)
+            {
+                imgFit = new();
+                double f = 1.0 / (double)ds;
+                CvInvoke.Resize(img, imgFit, new Size(), f, f, Inter.Nearest);
+            }
+            else
+            {
+                imgFit = img;
+            }
 
-            return new PointF(
-                Convert.ToSingle(m.M10 / (m.M00 + 1e-8)),
-                Convert.ToSingle(m.M01 / (m.M00 + 1e-8))
-            );
+            Moments moments = CvInvoke.Moments(imgFit, binary);
+
+            double cx = moments.M10 / (moments.M00 + 1e-10) * ds; // x-coordinate of centroid
+            double cy = moments.M01 / (moments.M00 + 1e-10) * ds; // y-coordinate of centroid
+
+
+            return new PointF((float) cx, (float)cy);
         }
 
         public int ClipToRange(int value, int minValue, int maxValue)
@@ -138,39 +163,49 @@ namespace OpenIris
             var im_roi_thresh = new Mat();
             CvInvoke.Threshold(im_roi_sub, im_roi_thresh, 0.0, 255.0, ThresholdType.ToZero);
 
-            var im_roi_power = new Mat();
-            CvInvoke.Pow(im_roi_thresh, 5.0, im_roi_power);
-
             if (block_out)
             {
                 CvInvoke.Rectangle(img, roi, new MCvScalar(0.0), -1, LineType.EightConnected, 0);
             }
 
-            PointF com = GetCenterOfMass(im_roi_power);
+            PointF com = GetCenterOfMass(im_roi_thresh);
             com.X += roi.X;
             com.Y += roi.Y;
             return com;
         }
 
-        public RotatedRect FitEllipseMoments(Mat img)
+        public RotatedRect FitEllipseMoments(Mat img, int ds = 1)
         {
-            Moments moments = CvInvoke.Moments(img, true);
+            if (ds < 1) ds = 1;
 
-            double cx = moments.M10 / moments.M00; // x-coordinate of centroid
-            double cy = moments.M01 / moments.M00; // y-coordinate of centroid
+            Mat imgFit;
+            if (ds > 1)
+            {
+                imgFit = new();
+                double f = 1.0 / (double) ds;
+                CvInvoke.Resize(img, imgFit, new Size(), f, f, Inter.Nearest);
 
-            double mu11 = moments.Mu11 / moments.M00;
-            double mu20 = moments.Mu20 / moments.M00;
-            double mu02 = moments.Mu02 / moments.M00;
+            } else
+            {
+                imgFit = img;
+            }
+
+            Moments moments = CvInvoke.Moments(imgFit, true);
+
+            double cx = moments.M10 / (moments.M00 + 1e-10) * ds; // x-coordinate of centroid
+            double cy = moments.M01 / (moments.M00 + 1e-10) * ds; // y-coordinate of centroid
+
+            double mu11 = moments.Mu11 / (moments.M00 + 1e-10);
+            double mu20 = moments.Mu20 / (moments.M00 + 1e-10);
+            double mu02 = moments.Mu02 / (moments.M00 + 1e-10);
 
             double theta = 0.5 * Math.Atan2(2 * mu11, (mu20 - mu02)) * 180 / Math.PI + 90; // Rotation angle
 
-            double a = Math.Sqrt(2 * ((mu20 + mu02) + Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))); // Semi-major axis
-            double b = Math.Sqrt(2 * ((mu20 + mu02) - Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))); // Semi-minor axis
+            double a = Math.Sqrt(2 * ((mu20 + mu02) + Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))) * ds; // Semi-major axis
+            double b = Math.Sqrt(2 * ((mu20 + mu02) - Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))) * ds; // Semi-minor axis
 
             return new RotatedRect(new PointF((float)cx, (float)cy), new SizeF(2 * (float) a, 2 * (float) b), (float)theta);
         }
-
         public Mat DrawFullDebug(OpenIrisDPIOutput output, OpenIrisDPIConfig config)
         {
             Mat colorImg = new Mat();
@@ -249,22 +284,29 @@ namespace OpenIris
                 0
             );
 
-            CvInvoke.Circle(debug, 
+            CvInvoke.Circle(debug,
                 new Point((int)output.Pupil.Center.X, (int)output.Pupil.Center.Y), 2, new MCvScalar(0, 255, 0), -1);
-            if (output.PupilPoints.Size > 0)
+            if (config.PupilAlgorithm == PupilAlgorithm.Moments)
             {
-                CvInvoke.DrawContours(debug, new VectorOfVectorOfPoint(output.PupilPoints), 0, new MCvScalar(0, 255, 0));
+                if (output.PupilPoints.Size > 0)
+                {
+                    CvInvoke.DrawContours(debug, new VectorOfVectorOfPoint(output.PupilPoints), 0, new MCvScalar(0, 255, 0));
+                }
+            } else if (config.PupilAlgorithm == PupilAlgorithm.EllipseFit)
+            {
+                for (int i = 0; i < output.PupilPoints.Size; i++)
+                {
+                    CvInvoke.Circle(debug, output.PupilPoints[i], 1, new MCvScalar(0, 255, 0), -1);
+                }
             }
-
 
             return debug;
         }
 
-
         public Mat DrawPupilDebug(OpenIrisDPIOutput output, OpenIrisDPIConfig config)
         {
             Mat pupilEdge = new();
-            CvInvoke.CvtColor(ImgPupilEdgeMasked, pupilEdge, ColorConversion.Gray2Bgr);
+            CvInvoke.CvtColor(ImgPupilEdge, pupilEdge, ColorConversion.Gray2Bgr);
 
             var pupilSearchOffset = new Point((int)output.PupilEst.X - config.PupilSearchRadius, (int)output.PupilEst.Y - config.PupilSearchRadius);
             var pupilSearchRect = new Rectangle(pupilSearchOffset, new Size(config.PupilSearchRadius * 2, config.PupilSearchRadius * 2));
@@ -273,18 +315,29 @@ namespace OpenIris
 
             var debug = pupilEdge.ToImage<Bgr, byte>();
 
-            if (output.PupilPoints.Size > 0)
+            if (config.PupilAlgorithm == PupilAlgorithm.Moments)
             {
-                var pupilContour = new List<Point>(output.PupilPoints.Size);
+                if (output.PupilPoints.Size > 0)
+                {
+                    var pupilContour = new List<Point>(output.PupilPoints.Size);
+                    for (int i = 0; i < output.PupilPoints.Size; i++)
+                    {
+                        var point = output.PupilPoints[i];
+                        pupilContour.Add(new Point(point.X - pupilSearchOffset.X, point.Y - pupilSearchOffset.Y));
+                    }
+                    var pupilContourVec = new VectorOfPoint(pupilContour.ToArray());
+                    CvInvoke.DrawContours(debug, new VectorOfVectorOfPoint(pupilContourVec), 0, new MCvScalar(0, 255, 255));
+                }
+            } else if (config.PupilAlgorithm == PupilAlgorithm.EllipseFit)
+            {
                 for (int i = 0; i < output.PupilPoints.Size; i++)
                 {
                     var point = output.PupilPoints[i];
-                    pupilContour.Add(new Point(point.X - pupilSearchOffset.X, point.Y - pupilSearchOffset.Y));
+                    CvInvoke.Circle(debug, new Point(point.X - pupilSearchOffset.X, point.Y - pupilSearchOffset.Y), 1, new MCvScalar(0, 255, 255), -1);
+                    
                 }
-                var pupilContourVec = new VectorOfPoint(pupilContour.ToArray());
-                CvInvoke.DrawContours(debug, new VectorOfVectorOfPoint(pupilContourVec), 0, new MCvScalar(0, 255, 255));
             }
-
+            
             var ell = output.Pupil;
             ell.Center -= new Size(pupilSearchOffset);
             CvInvoke.Circle(debug, new Point((int) ell.Center.X, (int) ell.Center.Y), 2, new MCvScalar(0, 255, 0), -1);
@@ -398,12 +451,19 @@ namespace OpenIris
 
         public OpenIrisDPIOutput FindDualPurkinje(ImageEye imageEye, OpenIrisDPIConfig config)
         {
-            bool debug = EyeTracker.DEBUG; // need to stash DEBUG in case it changes in the middle of a loop
+            // need to stash DEBUG in case it changes in the middle of a loop
+            bool debug = EyeTracker.DEBUG;
 
             var output = new OpenIrisDPIOutput();
 
             if (imageEye.Size.IsEmpty)
                 return output;
+
+            // ########################################
+            // Estimate Pupil Center 
+            // ########################################
+
+            EyeTrackerDebug.TrackProcessingTime("Estimate Pupil Center");
 
             ImgCrop = new Mat(imageEye.Image.Mat, config.Crop);
 
@@ -414,116 +474,113 @@ namespace OpenIris
             CvInvoke.Threshold(ImgBlur, ImgThresh, config.PupilThreshold, 255, ThresholdType.BinaryInv);
 
             // Downsample for speedup, take center of mass of dark pixels to extimate pupil center
-            var imThreshDsSize = new Size(config.Crop.Width / config.PupilDsFactor, config.Crop.Height / config.PupilDsFactor);
-            CvInvoke.Resize(ImgThresh, ImgThreshDs, imThreshDsSize, 0, 0, Inter.Nearest);
+            output.PupilEst = GetCenterOfMass(ImgThresh, config.PupilDsFactor, true);
 
-            var com = GetCenterOfMass(ImgThreshDs, true);
-            com.X *= config.PupilDsFactor;
-            com.Y *= config.PupilDsFactor;
-            output.PupilEst = com;
-
-            EyeTrackerDebug.TrackProcessingTime("Pupil CoM");
 
             // ########################################
             // Fit Pupil 
             // ########################################
 
-            // Find edges of pupil by computing the sobel filter of the thresholded image
-            var pupilSearchOffset = new Point((int) com.X - config.PupilSearchRadius, (int) com.Y - config.PupilSearchRadius);
+            EyeTrackerDebug.TrackProcessingTime("Fitting Pupil");
+
+            // Crop out approximate pupil location
+            var pupilSearchOffset = new Point((int)output.PupilEst.X - config.PupilSearchRadius, (int)output.PupilEst.Y - config.PupilSearchRadius);
             var pupilSearchRect = new Rectangle(pupilSearchOffset, new Size(config.PupilSearchRadius * 2, config.PupilSearchRadius * 2));
             pupilSearchRect = ClipRect(pupilSearchRect, new Rectangle(new Point(0, 0), ImgThresh.Size));
             pupilSearchOffset = pupilSearchRect.Location;
             var pupilSearchROI = new Mat(ImgThresh, pupilSearchRect);
 
-            CvInvoke.Laplacian(pupilSearchROI, ImgPupilLap, DepthType.Cv16S, 1, 1, 0, BorderType.Constant);
+            // Mask in a circle of the search radius
+            var pupilSearchMask = new Mat(pupilSearchROI.Size, DepthType.Cv8U, 1);
+            pupilSearchMask.SetTo(new MCvScalar(0));
+            var pupilSearchCenter = new Point((int)output.PupilEst.X - pupilSearchOffset.X, (int)output.PupilEst.Y - pupilSearchOffset.Y);
+            CvInvoke.Circle(pupilSearchMask, pupilSearchCenter, config.PupilSearchRadius, new MCvScalar(255), -1, LineType.EightConnected, 0);
+            CvInvoke.BitwiseAnd(pupilSearchROI, pupilSearchMask, ImgPupilMasked);
+
+            // Find edges of pupil by computing the laplacian filter of the thresholded image
+            CvInvoke.Laplacian(ImgPupilMasked, ImgPupilLap, DepthType.Cv16S, 1, 1, 0, BorderType.Constant);
             CvInvoke.ConvertScaleAbs(ImgPupilLap, ImgPupilEdge, 1.0, 0.0);
             ImgPupilEdge.ConvertTo(ImgPupilEdge, DepthType.Cv8U);
 
-            // Mask in a circle of the search radius
-            var pupilSearchMask = new Mat(ImgPupilEdge.Size, DepthType.Cv8U, 1);
-            pupilSearchMask.SetTo(new MCvScalar(0));
-            var pupilSearchCenter = new Point((int) com.X - pupilSearchOffset.X, (int) com.Y - pupilSearchOffset.Y);
-            CvInvoke.Circle(pupilSearchMask, pupilSearchCenter, config.PupilSearchRadius, new MCvScalar(255), -1, LineType.EightConnected, 0);
-
-            CvInvoke.BitwiseAnd(ImgPupilEdge, ImgPupilEdge, ImgPupilEdgeMasked, pupilSearchMask);
-            
             var edgePts = new VectorOfPoint();
-            CvInvoke.FindNonZero(ImgPupilEdgeMasked, edgePts);
+            CvInvoke.FindNonZero(ImgPupilEdge, edgePts);
 
-            // Pupil Fitting test
+            // Pupil Fitting
+            RotatedRect pupil = new RotatedRect();
             var pupilPtsRaw = new VectorOfPoint();
-            var pupilRaw = new RotatedRect();
-            var pupilBitmask = Mat.Zeros(ImgPupilEdgeMasked.Rows, ImgPupilEdgeMasked.Cols, DepthType.Cv8U, 1);
-            if (edgePts.Size != 0)
+            if (config.PupilAlgorithm == PupilAlgorithm.Moments)
             {
-                CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
-                CvInvoke.DrawContours(pupilBitmask, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255), -1);
+                var pupilRaw = new RotatedRect();
+                var pupilBitmask = Mat.Zeros(ImgPupilEdge.Rows, ImgPupilEdge.Cols, DepthType.Cv8U, 1);
+                if (edgePts.Size != 0)
+                {
+                    CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
+                    CvInvoke.DrawContours(pupilBitmask, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255), -1);
 
-                pupilRaw = FitEllipseMoments(pupilBitmask);
-            }
+                    pupilRaw = FitEllipseMoments(pupilBitmask, config.PupilFitDsFactor);
+                }
 
-            var pupil = new RotatedRect(
-                new PointF(pupilRaw.Center.X + pupilSearchOffset.X, pupilRaw.Center.Y + pupilSearchOffset.Y), 
-                pupilRaw.Size, pupilRaw.Angle);
+                pupil = new RotatedRect(
+                    new PointF(pupilRaw.Center.X + pupilSearchOffset.X, pupilRaw.Center.Y + pupilSearchOffset.Y),
+                    pupilRaw.Size, pupilRaw.Angle);
 
-            output.Pupil = pupil;
+                output.Pupil = pupil;
 
-            var pupilPtsArr = pupilPtsRaw.ToArray();
-            for (int i = 0; i < pupilPtsRaw.Size; i++)
+                var pupilPtsArr = pupilPtsRaw.ToArray();
+                for (int i = 0; i < pupilPtsRaw.Size; i++)
+                {
+                    Point point = pupilPtsArr[i];
+                    point.X += pupilSearchOffset.X;
+                    point.Y += pupilSearchOffset.Y;
+                    pupilPtsArr[i] = point;
+                }
+
+                var pupilPts = new VectorOfPoint(pupilPtsArr);
+                output.PupilPoints = pupilPts;
+            } else if (config.PupilAlgorithm == PupilAlgorithm.EllipseFit)
             {
-                Point point = pupilPtsArr[i];
-                point.X += pupilSearchOffset.X;
-                point.Y += pupilSearchOffset.Y;
-                pupilPtsArr[i] = point;
-            }
+                if (edgePts.Size != 0)
+                {
+                    CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
+                    var pupilContour = Mat.Zeros(ImgPupilEdge.Rows, ImgPupilEdge.Cols, DepthType.Cv8U, 1);
+                    CvInvoke.DrawContours(pupilContour, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255));
+                    // Mask out edges
+                    CvInvoke.Rectangle(pupilContour, new Rectangle(0, 0, pupilContour.Width - 1, pupilContour.Height - 1), new MCvScalar(0));
+                    CvInvoke.FindNonZero(pupilContour, pupilPtsRaw);
+                }
 
-            var pupilPts = new VectorOfPoint(pupilPtsArr);
-            output.PupilPoints = pupilPts;
-            EyeTrackerDebug.TrackProcessingTime("Pupil Fit");
+                var pupilPtsArr = pupilPtsRaw.ToArray();
+                for (int i = 0; i < pupilPtsRaw.Size; i++)
+                {
+                    Point point = pupilPtsArr[i];
+                    point.X += pupilSearchOffset.X;
+                    point.Y += pupilSearchOffset.Y;
+                    pupilPtsArr[i] = point;
+                }
+
+                var pupilPts = new VectorOfPoint(pupilPtsArr);
+
+                output.PupilPoints = pupilPts;
+
+                if (pupilPts.Size >= 5)
+                {
+                    // NOTE: pupil rotation not being assigned correctly in this version of OpenCV. see https://github.com/opencv/opencv/issues/11088
+                    pupil = CvInvoke.FitEllipse(pupilPts);
+                }
+                else
+                {
+                    // TODO retrun error code here
+                    pupil = new RotatedRect(new PointF(0, 0), new SizeF(0, 0), 0);
+                }
+                output.Pupil = pupil;
+            }
             
-            /* Old Ellipse fitting code
-            var pupilPtsRaw = new VectorOfPoint();
-            if (edgePts.Size != 0)
-            {
-                CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
-                var pupilContour = Mat.Zeros(ImgPupilEdgeMasked.Rows, ImgPupilEdgeMasked.Cols, DepthType.Cv8U, 1);
-                CvInvoke.DrawContours(pupilContour, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255));
-                // Mask out edges
-                CvInvoke.Rectangle(pupilContour, new Rectangle(0, 0, pupilContour.Width-1, pupilContour.Height-1), new MCvScalar(0)); 
-                CvInvoke.FindNonZero(pupilContour, pupilPtsRaw);
-            }
-            
-            var pupilPtsArr = pupilPtsRaw.ToArray();
-            for (int i = 0; i < pupilPtsRaw.Size; i++)
-            {
-                Point point = pupilPtsArr[i];
-                point.X += pupilSearchOffset.X;
-                point.Y += pupilSearchOffset.Y;
-                pupilPtsArr[i] = point;
-            }
-
-            var pupilPts = new VectorOfPoint(pupilPtsArr);
-
-            output.PupilPoints = pupilPts;
-
-            RotatedRect pupil;
-            if (pupilPts.Size >= 5)
-            {
-                // NOTE: pupil rotation not being assigned correctly in this version of OpenCV. see https://github.com/opencv/opencv/issues/11088
-                pupil = CvInvoke.FitEllipse(pupilPts);
-            } else
-            {
-                // TODO retrun error code here
-                pupil = new RotatedRect(new PointF(0, 0), new SizeF(0, 0), 0);
-            }
-            output.Pupil = pupil;
-
-            EyeTrackerDebug.TrackProcessingTime("Pupil Fit");
-            */
 
             // ########################################
             // Find P1 (potentially outside of pupil)
             // ########################################
+
+            EyeTrackerDebug.TrackProcessingTime("Finding P1");
 
             // Mask out everything outside of the search area
             var p1MaskCenter = pupil.Center;
@@ -564,26 +621,29 @@ namespace OpenIris
             PointF p1 = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.P1Threshold, true);
             output.P1 = new PointF(p1.X + pupilSearchOffset.X, p1.Y + pupilSearchOffset.Y);
 
-            EyeTrackerDebug.TrackProcessingTime("Find P1");
 
             // ########################################
             // Find P4 (always within pupil)
             // ########################################
 
+            EyeTrackerDebug.TrackProcessingTime("Finding P4");
+
             // If the pupil isn't found, assume the search radius is too small and just look within the P1 ROI.
             if (pupilPtsRaw.Size >= 3)
             {
-                var p4Mask = pupilBitmask;
+                //var p4Mask = pupilBitmask;
 
-                /*
-                var p4Mask = new Mat(pupilSearchRect.Size, DepthType.Cv8U, 1);
-                p4Mask.SetTo(new MCvScalar(0));
-                CvInvoke.DrawContours(p4Mask, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255), -1);
-                */
+                
+                var p4Mask = Mat.Zeros(pupilSearchRect.Size.Height, pupilSearchRect.Size.Width, DepthType.Cv8U, 1);
+
+                if (pupilPtsRaw.Size > 0)
+                {
+                    CvInvoke.DrawContours(p4Mask, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255), -1);
+                }
 
                 if (config.PupilMaskErodeRadius > 0)
                 {
-                    var kernel = CvInvoke.GetStructuringElement(ElementShape.Ellipse, new Size(config.PupilMaskErodeRadius * 2 + 1, config.PupilMaskErodeRadius * 2 + 1), new Point(-1, -1));
+                    var kernel = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(config.PupilMaskErodeRadius * 2 + 1, config.PupilMaskErodeRadius * 2 + 1), new Point(-1, -1));
                     CvInvoke.Erode(p4Mask, p4Mask, kernel, new Point(-1, -1), 1, BorderType.Constant, new MCvScalar(1));
                 }
 
@@ -604,11 +664,12 @@ namespace OpenIris
             var p4 = LocalizeSpot(ImgP4, maxLoc, config.P4RoiRadius, config.PupilThreshold, false);
             output.P4 = new PointF(p4.X + pupilSearchOffset.X, p4.Y + pupilSearchOffset.Y);
 
-            EyeTrackerDebug.TrackProcessingTime("Find P4");
 
             // ########################################
             // Debugging
             // ########################################
+
+            EyeTrackerDebug.TrackProcessingTime("Debugging");
 
             if (debug)
             {
@@ -625,7 +686,6 @@ namespace OpenIris
                 EyeTrackerDebug.AddImage("DPI-P4", imageEye.WhichEye, debugP4Mat.ToImage<Bgr, byte>());
 
             }
-            EyeTrackerDebug.TrackProcessingTime("Debugging");
 
             return output;
         }
