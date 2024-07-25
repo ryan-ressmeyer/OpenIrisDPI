@@ -28,10 +28,9 @@ namespace OpenIris
         public VectorOfPoint PupilPoints { get; set; }     // Points used to estimate pupil ellipse
         public RotatedRect Pupil { get; set; }        // Estimated Pupil Ellipse
         public Point P1Est { get; set; }       // Center of mass of thresholded pupil
-        public PointF P1 { get; set; }          // Refined estimate of P1 CoM
-        public PointF P1Fine { get; set; }     // Refined estimate of P1 using pupil background
+        public RotatedRect P1 { get; set; }          // Refined estimate of P1 CoM
         public Point P4Est { get; set; }       // Maximum pixel after P1 blocked out
-        public PointF P4 { get; set; }          // Refined estimate of P4 CoM
+        public RotatedRect P4 { get; set; }          // Refined estimate of P4 CoM
 
         public OpenIrisDPIOutput()
         {
@@ -39,10 +38,9 @@ namespace OpenIris
             PupilPoints = new VectorOfPoint();
             Pupil = new RotatedRect();
             P1Est = new Point(0, 0);
-            P1 = new Point(0, 0);   
-            P1Fine = new Point(0, 0);
+            P1 = new RotatedRect();   
             P4Est = new Point(0, 0);
-            P4 = new Point(0, 0);
+            P4 = new RotatedRect();
         }
     }
 
@@ -80,7 +78,6 @@ namespace OpenIris
         private Mat ImgCrop = new();
         private Mat ImgBlur = new();
         private Mat ImgThresh = new();
-        private Mat ImgThreshDs = new();
         private Mat ImgPupilMasked = new();
         private Mat ImgPupilLap = new();
         private Mat ImgPupilEdge = new();
@@ -125,22 +122,47 @@ namespace OpenIris
             return new PointF((float) cx, (float)cy);
         }
 
-        public int ClipToRange(int value, int minValue, int maxValue)
+        // A function for fitting the second moments of an input image. 
+        // If binary is false, is equivalent to finding the best fitting 2d gaussian.
+        // If binary is true, is equivalent to finding the best fitting ellipse.
+        public RotatedRect Fit2ndMoments(Mat img, int ds = 1, bool binary=false)
         {
-            return Math.Min(maxValue, Math.Max(value, minValue));
+
+            if (ds < 1) ds = 1;
+            Mat imgFit;
+            if (ds > 1)
+            {
+                imgFit = new();
+                double f = 1.0 / (double)ds;
+                CvInvoke.Resize(img, imgFit, new Size(), f, f, Inter.Nearest);
+            }
+            else
+            {
+                imgFit = img;
+            }
+
+            Moments moments = CvInvoke.Moments(imgFit, binary);
+
+            double M00 = moments.M00 + 1e-10; // added small value to avoid divide by zero error
+
+            double cx = moments.M10 / M00 * ds; // x-coordinate of centroid
+            double cy = moments.M01 / M00 * ds; // y-coordinate of centroid
+
+            double mu11 = moments.Mu11 / M00;
+            double mu20 = moments.Mu20 / M00;
+            double mu02 = moments.Mu02 / M00;
+
+            double theta = 0.5 * Math.Atan2(2 * mu11, (mu20 - mu02)) * 180 / Math.PI + 90; // Rotation angle
+
+            double sqrtTerm = Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02));
+            double a = Math.Sqrt(2 * (mu20 + mu02 + sqrtTerm)) * ds; // Semi-major axis
+            double b = Math.Sqrt(2 * (mu20 + mu02 - sqrtTerm)) * ds; // Semi-minor axis
+
+            return new RotatedRect(new PointF((float)cx, (float)cy), new SizeF(2 * (float)a, 2 * (float)b), (float)theta);
         }
 
-        public Rectangle ClipRect(Rectangle rect, Rectangle boundary)
-        {
-            int x = Math.Max(rect.X, boundary.X);
-            int y = Math.Max(rect.Y, boundary.Y);
-            int right = Math.Min(rect.Right, boundary.Right);
-            int bottom = Math.Min(rect.Bottom, boundary.Bottom);
 
-            return Rectangle.FromLTRB(x, y, right, bottom); ;
-        }
-
-        public PointF LocalizeSpot(
+        public RotatedRect LocalizeSpot(
             Mat img,
             Point roi_center,
             int roi_radius,
@@ -168,43 +190,25 @@ namespace OpenIris
                 CvInvoke.Rectangle(img, roi, new MCvScalar(0.0), -1, LineType.EightConnected, 0);
             }
 
-            PointF com = GetCenterOfMass(im_roi_thresh);
-            com.X += roi.X;
-            com.Y += roi.Y;
-            return com;
+            RotatedRect spot = Fit2ndMoments(im_roi_thresh);
+            spot.Center.X += roi.X;
+            spot.Center.Y += roi.Y;
+            return spot;
         }
 
-        public RotatedRect FitEllipseMoments(Mat img, int ds = 1)
+        public int ClipToRange(int value, int minValue, int maxValue)
         {
-            if (ds < 1) ds = 1;
+            return Math.Min(maxValue, Math.Max(value, minValue));
+        }
 
-            Mat imgFit;
-            if (ds > 1)
-            {
-                imgFit = new();
-                double f = 1.0 / (double) ds;
-                CvInvoke.Resize(img, imgFit, new Size(), f, f, Inter.Nearest);
+        public Rectangle ClipRect(Rectangle rect, Rectangle boundary)
+        {
+            int x = Math.Max(rect.X, boundary.X);
+            int y = Math.Max(rect.Y, boundary.Y);
+            int right = Math.Min(rect.Right, boundary.Right);
+            int bottom = Math.Min(rect.Bottom, boundary.Bottom);
 
-            } else
-            {
-                imgFit = img;
-            }
-
-            Moments moments = CvInvoke.Moments(imgFit, true);
-
-            double cx = moments.M10 / (moments.M00 + 1e-10) * ds; // x-coordinate of centroid
-            double cy = moments.M01 / (moments.M00 + 1e-10) * ds; // y-coordinate of centroid
-
-            double mu11 = moments.Mu11 / (moments.M00 + 1e-10);
-            double mu20 = moments.Mu20 / (moments.M00 + 1e-10);
-            double mu02 = moments.Mu02 / (moments.M00 + 1e-10);
-
-            double theta = 0.5 * Math.Atan2(2 * mu11, (mu20 - mu02)) * 180 / Math.PI + 90; // Rotation angle
-
-            double a = Math.Sqrt(2 * ((mu20 + mu02) + Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))) * ds; // Semi-major axis
-            double b = Math.Sqrt(2 * ((mu20 + mu02) - Math.Sqrt(mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02)))) * ds; // Semi-minor axis
-
-            return new RotatedRect(new PointF((float)cx, (float)cy), new SizeF(2 * (float) a, 2 * (float) b), (float)theta);
+            return Rectangle.FromLTRB(x, y, right, bottom); ;
         }
         public Mat DrawFullDebug(OpenIrisDPIOutput output, OpenIrisDPIConfig config)
         {
@@ -238,7 +242,7 @@ namespace OpenIris
             // Draw P1 
             CvInvoke.Circle(
                 debug,
-                new Point((int) output.P1.X, (int) output.P1.Y),
+                new Point((int) output.P1.Center.X, (int) output.P1.Center.Y),
                 config.P1RoiRadius,
                 new MCvScalar(0, 255, 255),
                 1,
@@ -262,7 +266,7 @@ namespace OpenIris
 
             CvInvoke.Circle(
                 debug,
-                new Point((int)output.P4.X, (int)output.P4.Y),
+                new Point((int)output.P4.Center.X, (int)output.P4.Center.Y),
                 config.P4RoiRadius,
                 new MCvScalar(0, 0, 255),
                 1,
@@ -386,7 +390,7 @@ namespace OpenIris
 
             CvInvoke.Circle(
                 debug,
-                new Point((int)output.P1.X, (int)output.P1.Y) - ((Size)pupilSearchOffset),
+                new Point((int)output.P1.Center.X, (int)output.P1.Center.Y) - ((Size)pupilSearchOffset),
                 config.P1RoiRadius,
                 new MCvScalar(0, 255, 255),
                 1,
@@ -437,7 +441,7 @@ namespace OpenIris
 
             CvInvoke.Circle(
                 debug,
-                new Point((int)output.P4.X, (int)output.P4.Y) - ((Size)pupilSearchOffset),
+                new Point((int)output.P4.Center.X, (int)output.P4.Center.Y) - ((Size)pupilSearchOffset),
                 config.P4RoiRadius,
                 new MCvScalar(0, 0, 255),
                 1,
@@ -517,7 +521,7 @@ namespace OpenIris
                     CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
                     CvInvoke.DrawContours(pupilBitmask, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255), -1);
 
-                    pupilRaw = FitEllipseMoments(pupilBitmask, config.PupilFitDsFactor);
+                    pupilRaw = Fit2ndMoments(pupilBitmask, config.PupilFitDsFactor, true);
                 }
 
                 pupil = new RotatedRect(
@@ -615,12 +619,11 @@ namespace OpenIris
 
             output.P1Est = new Point((int)p1COM.X + pupilSearchOffset.X, (int)p1COM.Y + pupilSearchOffset.Y);
 
-            var p1Fine = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.PupilThreshold, false);
-            output.P1Fine = new PointF(p1Fine.X + pupilSearchOffset.X, p1Fine.Y + pupilSearchOffset.Y);
-
-            PointF p1 = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.P1Threshold, true);
-            output.P1 = new PointF(p1.X + pupilSearchOffset.X, p1.Y + pupilSearchOffset.Y);
-
+            var p1 = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.P1Threshold, true);
+            p1.Center.X += pupilSearchOffset.X;
+            p1.Center.Y += pupilSearchOffset.Y;
+            output.P1 = p1;
+            
 
             // ########################################
             // Find P4 (always within pupil)
@@ -658,11 +661,12 @@ namespace OpenIris
             Point maxLoc = new(), minLoc = new();
             double minVal = 0.0, maxVal = 0.0;
             CvInvoke.MinMaxLoc(ImgP4, ref maxVal, ref minVal, ref minLoc, ref maxLoc);
-
             output.P4Est = new Point(maxLoc.X + pupilSearchOffset.X, maxLoc.Y + pupilSearchOffset.Y);
 
             var p4 = LocalizeSpot(ImgP4, maxLoc, config.P4RoiRadius, config.PupilThreshold, false);
-            output.P4 = new PointF(p4.X + pupilSearchOffset.X, p4.Y + pupilSearchOffset.Y);
+            p4.Center.X += pupilSearchOffset.X;
+            p4.Center.Y += pupilSearchOffset.Y;
+            output.P4 = p4;
 
 
             // ########################################

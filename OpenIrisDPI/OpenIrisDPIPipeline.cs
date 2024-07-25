@@ -99,10 +99,10 @@
             // Store Various Estimators in the 
             CornealReflectionData[] crs =
             {
-                new CornealReflectionData(output.P1 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
-                new CornealReflectionData(output.P1Fine + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
-                new CornealReflectionData(output.P1Est + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
-                new CornealReflectionData(output.P4 + new Size(dpiConfig.Crop.Location), new SizeF(1.0f,1.0f), 0.0f),
+                new CornealReflectionData(output.P1.Center + new Size(dpiConfig.Crop.Location), output.P1.Size, output.P1.Angle),
+                new CornealReflectionData(),
+                new CornealReflectionData(),
+                new CornealReflectionData(output.P4.Center + new Size(dpiConfig.Crop.Location), output.P4.Size, output.P4.Angle),
             };
 
             // Store Pupil Search Radius in the Iris
