@@ -80,10 +80,14 @@
 
             dpiConfig.P1RoiRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.P1RoiRadiusLeftEye : trackingSettings.P1RoiRadiusRightEye;
 
+            dpiConfig.P1MinDiameter = imageEye.WhichEye == Eye.Left ? trackingSettings.P1MinDiameterLeftEye : trackingSettings.P1MinDiameterRightEye;
 
             dpiConfig.P4RoiRadius = imageEye.WhichEye == Eye.Left ? trackingSettings.P4RoiRadiusLeftEye : trackingSettings.P4RoiRadiusRightEye;
 
+            dpiConfig.P4MinDiameter = imageEye.WhichEye == Eye.Left ? trackingSettings.P4MinDiameterLeftEye : trackingSettings.P4MinDiameterRightEye;
+
             dpiConfig.PupilAlgorithm = imageEye.WhichEye == Eye.Left ? trackingSettings.PupilAlgorithmLeftEye : trackingSettings.PupilAlgorithmRightEye;
+
 
             return dpiConfig;
         }
@@ -108,6 +112,9 @@
             // Store Pupil Search Radius in the Iris
             var iris = new IrisData(output.PupilEst + new Size(dpiConfig.Crop.Location), dpiConfig.PupilSearchRadius);
 
+            bool p1_valid = output.P1.Center.X >= 0;
+            bool p4_valid = output.P4.Center.Y >= 0;
+
             // Create the data structure
             var eyeData = new EyeData
             {
@@ -120,7 +127,7 @@
                 CornealReflections = crs,
                 TorsionAngle = 0.0,
                 Eyelids = new EyelidData(),
-                DataQuality = 100.0,
+                DataQuality = Convert.ToDouble(p1_valid) * 50.0 + Convert.ToDouble(p4_valid) * 50.0,
             };
 
             return eyeData;
@@ -296,6 +303,15 @@
         public int P1RoiRadiusRightEye { get => p1RoiRadiusRightEye; set => SetProperty(ref p1RoiRadiusRightEye, value, nameof(P1RoiRadiusRightEye)); }
         private int p1RoiRadiusRightEye = 40;
 
+        // P1 Min Diameter
+        [Category("CR settings"), Description("Minimum diameter of the corneal reflection to be considered valid. Units of pixels (left eye).")]
+        public int P1MinDiameterLeftEye { get => p1MinDiameterLeftEye; set => SetProperty(ref p1MinDiameterLeftEye, value, nameof(P1MinDiameterLeftEye)); }
+        private int p1MinDiameterLeftEye = 10;
+
+        [Category("CR settings"), Description("Minimum diameter of the corneal reflection to be considered valid. Units of pixels (right eye).")]
+        public int P1MinDiameterRightEye { get => p1MinDiameterRightEye; set => SetProperty(ref p1MinDiameterRightEye, value, nameof(P1MinDiameterRightEye)); }
+        private int p1MinDiameterRightEye = 10;
+
         // Pupil Mask Percent
         [Category("P4 settings"), Description("Radius of erosion of pupil used to mask out everything outside of the pupil (left eye).")]
         public int PupilMaskErodeRadiusLeftEye { get => pupilMaskErodeRadiusLeftEye; set => SetProperty(ref pupilMaskErodeRadiusLeftEye, value, nameof(PupilMaskErodeRadiusLeftEye)); }
@@ -313,6 +329,15 @@
         [Category("P4 settings"), Description("Radius of the region of interest used for localizing P4. Units of pixels (right eye).")]
         public int P4RoiRadiusRightEye { get => p4RoiRadiusRightEye; set => SetProperty(ref p4RoiRadiusRightEye, value, nameof(P4RoiRadiusRightEye)); }
         private int p4RoiRadiusRightEye = 15;
+
+        // P4 Min Diameter
+        [Category("P4 settings"), Description("Minimum diameter of the P4 to be considered valid. Units of pixels (left eye).")]
+        public int P4MinDiameterLeftEye { get => p4MinDiameterLeftEye; set => SetProperty(ref p4MinDiameterLeftEye, value, nameof(P4MinDiameterLeftEye)); }
+        private int p4MinDiameterLeftEye = 1;
+
+        [Category("P4 settings"), Description("Minimum diameter of the P4 to be considered valid. Units of pixels (right eye).")]
+        public int P4MinDiameterRightEye { get => p4MinDiameterRightEye; set => SetProperty(ref p4MinDiameterRightEye, value, nameof(P4MinDiameterRightEye)); }
+        private int p4MinDiameterRightEye = 1;
 
         // Pupil Downsampling Factor
         [Category("Performance Settings"), Description("Downsampling factor (left eye).")]

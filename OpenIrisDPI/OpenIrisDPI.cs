@@ -22,6 +22,23 @@ namespace OpenIris
     using static System.Net.Mime.MediaTypeNames;
     using System.Security.Policy;
 
+    public class Spot
+    {
+        public RotatedRect rect { get; set; }
+
+        public double mass { get; set; }
+
+        public Spot()
+        {
+            rect = new RotatedRect();
+            mass = 0;
+        }
+        public Spot(RotatedRect rect, double mass)
+        {
+            this.rect = rect;
+            this.mass = mass;
+        }
+    }
     public class OpenIrisDPIOutput
     {
         public PointF PupilEst { get; set; }        // Center of mass of thresholded image
@@ -63,10 +80,13 @@ namespace OpenIris
         public int P1DsFactor { get; set; }
         public int P1Threshold { get; set; }
         public int P1RoiRadius { get; set; }
+        public int P1MinDiameter { get; set; }
+
 
         public int PupilMaskErodeRadius { get; set; }
 
         public int P4RoiRadius { get; set; }
+        public int P4MinDiameter { get; set; }
 
         public PupilAlgorithm PupilAlgorithm { get; set; }
     }
@@ -122,10 +142,11 @@ namespace OpenIris
             return new PointF((float) cx, (float)cy);
         }
 
+
         // A function for fitting the second moments of an input image. 
         // If binary is false, is equivalent to finding the best fitting 2d gaussian.
         // If binary is true, is equivalent to finding the best fitting ellipse.
-        public RotatedRect Fit2ndMoments(Mat img, int ds = 1, bool binary=false)
+        public Spot Fit2ndMoments(Mat img, int ds = 1, bool binary=false)
         {
 
             if (ds < 1) ds = 1;
@@ -158,11 +179,16 @@ namespace OpenIris
             double a = Math.Sqrt(2 * (mu20 + mu02 + sqrtTerm)) * ds; // Semi-major axis
             double b = Math.Sqrt(2 * (mu20 + mu02 - sqrtTerm)) * ds; // Semi-minor axis
 
-            return new RotatedRect(new PointF((float)cx, (float)cy), new SizeF(2 * (float)a, 2 * (float)b), (float)theta);
+            Spot spot = new Spot(
+                    new RotatedRect(new PointF((float)cx, (float)cy), new SizeF(2 * (float)a, 2 * (float)b), (float)theta),
+                    moments.M00
+                );
+
+            return spot;
         }
 
 
-        public RotatedRect LocalizeSpot(
+        public Spot LocalizeSpot(
             Mat img,
             Point roi_center,
             int roi_radius,
@@ -190,9 +216,11 @@ namespace OpenIris
                 CvInvoke.Rectangle(img, roi, new MCvScalar(0.0), -1, LineType.EightConnected, 0);
             }
 
-            RotatedRect spot = Fit2ndMoments(im_roi_thresh);
-            spot.Center.X += roi.X;
-            spot.Center.Y += roi.Y;
+            Spot spot = Fit2ndMoments(im_roi_thresh);
+            var rect = spot.rect;
+            rect.Center.X += roi.X;
+            rect.Center.Y += roi.Y;
+            spot.rect = rect;
             return spot;
         }
 
@@ -229,6 +257,7 @@ namespace OpenIris
             Mat debug = new Mat();
             CvInvoke.Add(colorImg, result, debug);
 
+            // Draw Search Radius
             CvInvoke.Circle(
                 debug,
                 new Point((int) output.PupilEst.X, (int) output.PupilEst.Y),
@@ -239,55 +268,66 @@ namespace OpenIris
                 0
             );
 
-            // Draw P1 
+            bool p1_valid = output.P1.Center.X >= 0;
+            if ( p1_valid )
+            {
+                // Draw P1 
+                CvInvoke.Circle(
+                    debug,
+                    new Point((int)output.P1.Center.X, (int)output.P1.Center.Y),
+                    config.P1RoiRadius,
+                    new MCvScalar(0, 255, 255),
+                    1,
+                    LineType.AntiAlias,
+                    0
+                );
+
+                // Draw P1 Roi
+                var p1Loc = output.P1Est;
+                p1Loc.X -= config.P1RoiRadius;
+                p1Loc.Y -= config.P1RoiRadius;
+                var p1Size = new Size(config.P1RoiRadius * 2, config.P1RoiRadius * 2);
+                CvInvoke.Rectangle(
+                    debug,
+                    new Rectangle(p1Loc, p1Size),
+                    new MCvScalar(0, 255, 255),
+                    1,
+                    LineType.AntiAlias,
+                    0
+                );
+            }
+            
+
+            // Draw p4
+            bool p4_valid = output.P4.Center.Y >= 0;
+            if ( p4_valid ) 
+            {
             CvInvoke.Circle(
-                debug,
-                new Point((int) output.P1.Center.X, (int) output.P1.Center.Y),
-                config.P1RoiRadius,
-                new MCvScalar(0, 255, 255),
-                1,
-                LineType.AntiAlias,
-                0
-            );
+                    debug,
+                    new Point((int)output.P4.Center.X, (int)output.P4.Center.Y),
+                    config.P4RoiRadius,
+                    new MCvScalar(0, 0, 255),
+                    1,
+                    LineType.AntiAlias,
+                    0
+                );
 
+                var p4Loc = output.P4Est;
+                p4Loc.X -= config.P4RoiRadius;
+                p4Loc.Y -= config.P4RoiRadius;
+                var p4Size = new Size(config.P4RoiRadius * 2, config.P4RoiRadius * 2);
+                // Draw P4 ROI and P4
+                CvInvoke.Rectangle(
+                    debug,
+                    new Rectangle(p4Loc, p4Size),
+                    new MCvScalar(0, 0, 255),
+                    1,
+                    LineType.AntiAlias,
+                    0
+                ); 
+            }
 
-            var p1Loc = output.P1Est;
-            p1Loc.X -= config.P1RoiRadius;
-            p1Loc.Y -= config.P1RoiRadius;
-            var p1Size = new Size(config.P1RoiRadius * 2, config.P1RoiRadius * 2);
-            CvInvoke.Rectangle(
-                debug,
-                new Rectangle(p1Loc, p1Size),
-                new MCvScalar(0, 255, 255),
-                1,
-                LineType.AntiAlias,
-                0
-            );
-
-            CvInvoke.Circle(
-                debug,
-                new Point((int)output.P4.Center.X, (int)output.P4.Center.Y),
-                config.P4RoiRadius,
-                new MCvScalar(0, 0, 255),
-                1,
-                LineType.AntiAlias,
-                0
-            );
-
-            var p4Loc = output.P4Est;
-            p4Loc.X -= config.P4RoiRadius;
-            p4Loc.Y -= config.P4RoiRadius;
-            var p4Size = new Size(config.P4RoiRadius * 2, config.P4RoiRadius * 2);
-            // Draw P4 ROI and P4
-            CvInvoke.Rectangle(
-                debug,
-                new Rectangle(p4Loc, p4Size),
-                new MCvScalar(0, 0, 255),
-                1,
-                LineType.AntiAlias,
-                0
-            );
-
+            // Draw pupil outline
             CvInvoke.Circle(debug,
                 new Point((int)output.Pupil.Center.X, (int)output.Pupil.Center.Y), 2, new MCvScalar(0, 255, 0), -1);
             if (config.PupilAlgorithm == PupilAlgorithm.Moments)
@@ -521,7 +561,8 @@ namespace OpenIris
                     CvInvoke.ConvexHull(edgePts, pupilPtsRaw, false);
                     CvInvoke.DrawContours(pupilBitmask, new VectorOfVectorOfPoint(pupilPtsRaw), 0, new MCvScalar(255), -1);
 
-                    pupilRaw = Fit2ndMoments(pupilBitmask, config.PupilFitDsFactor, true);
+                    var pupil_spot = Fit2ndMoments(pupilBitmask, config.PupilFitDsFactor, true);
+                    pupilRaw = pupil_spot.rect;
                 }
 
                 pupil = new RotatedRect(
@@ -619,11 +660,17 @@ namespace OpenIris
 
             output.P1Est = new Point((int)p1COM.X + pupilSearchOffset.X, (int)p1COM.Y + pupilSearchOffset.Y);
 
-            var p1 = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.P1Threshold, true);
+            var p1_spot = LocalizeSpot(ImgP1, new Point((int)p1COM.X, (int)p1COM.Y), config.P1RoiRadius, config.P1Threshold, true);
+            var p1 = p1_spot.rect;
             p1.Center.X += pupilSearchOffset.X;
             p1.Center.Y += pupilSearchOffset.Y;
+
+            // If semi-major axis of p1 is too small (i.e. P1 not detected) set to invalid location
+            bool p1_valid = p1.Size.Height >= config.P1MinDiameter;
+            if (!p1_valid) p1.Center = new PointF(-100, -100);
+
             output.P1 = p1;
-            
+
 
             // ########################################
             // Find P4 (always within pupil)
@@ -663,9 +710,15 @@ namespace OpenIris
             CvInvoke.MinMaxLoc(ImgP4, ref maxVal, ref minVal, ref minLoc, ref maxLoc);
             output.P4Est = new Point(maxLoc.X + pupilSearchOffset.X, maxLoc.Y + pupilSearchOffset.Y);
 
-            var p4 = LocalizeSpot(ImgP4, maxLoc, config.P4RoiRadius, config.PupilThreshold, false);
+            var p4_spot = LocalizeSpot(ImgP4, maxLoc, config.P4RoiRadius, config.PupilThreshold, false);
+            var p4 = p4_spot.rect;
             p4.Center.X += pupilSearchOffset.X;
             p4.Center.Y += pupilSearchOffset.Y;
+
+            // If p4 not large enough (i.e. not found) set to invalid position
+            bool p4_valid = p4.Size.Height >= config.P4MinDiameter;
+            if (!p4_valid || !p1_valid) p4.Center = new PointF(config.Crop.Width + 100, -100);
+
             output.P4 = p4;
 
 
