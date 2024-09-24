@@ -305,12 +305,12 @@
 
         // P1 Min Diameter
         [Category("CR settings"), Description("Minimum diameter of the corneal reflection to be considered valid. Units of pixels (left eye).")]
-        public int P1MinDiameterLeftEye { get => p1MinDiameterLeftEye; set => SetProperty(ref p1MinDiameterLeftEye, value, nameof(P1MinDiameterLeftEye)); }
-        private int p1MinDiameterLeftEye = 10;
+        public float P1MinDiameterLeftEye { get => p1MinDiameterLeftEye; set => SetProperty(ref p1MinDiameterLeftEye, value, nameof(P1MinDiameterLeftEye)); }
+        private float p1MinDiameterLeftEye = 5.0f;
 
         [Category("CR settings"), Description("Minimum diameter of the corneal reflection to be considered valid. Units of pixels (right eye).")]
-        public int P1MinDiameterRightEye { get => p1MinDiameterRightEye; set => SetProperty(ref p1MinDiameterRightEye, value, nameof(P1MinDiameterRightEye)); }
-        private int p1MinDiameterRightEye = 10;
+        public float P1MinDiameterRightEye { get => p1MinDiameterRightEye; set => SetProperty(ref p1MinDiameterRightEye, value, nameof(P1MinDiameterRightEye)); }
+        private float p1MinDiameterRightEye = 5.0f;
 
         // Pupil Mask Percent
         [Category("P4 settings"), Description("Radius of erosion of pupil used to mask out everything outside of the pupil (left eye).")]
@@ -332,12 +332,12 @@
 
         // P4 Min Diameter
         [Category("P4 settings"), Description("Minimum diameter of the P4 to be considered valid. Units of pixels (left eye).")]
-        public int P4MinDiameterLeftEye { get => p4MinDiameterLeftEye; set => SetProperty(ref p4MinDiameterLeftEye, value, nameof(P4MinDiameterLeftEye)); }
-        private int p4MinDiameterLeftEye = 1;
+        public float P4MinDiameterLeftEye { get => p4MinDiameterLeftEye; set => SetProperty(ref p4MinDiameterLeftEye, value, nameof(P4MinDiameterLeftEye)); }
+        private float p4MinDiameterLeftEye = 0.5f;
 
         [Category("P4 settings"), Description("Minimum diameter of the P4 to be considered valid. Units of pixels (right eye).")]
-        public int P4MinDiameterRightEye { get => p4MinDiameterRightEye; set => SetProperty(ref p4MinDiameterRightEye, value, nameof(P4MinDiameterRightEye)); }
-        private int p4MinDiameterRightEye = 1;
+        public float P4MinDiameterRightEye { get => p4MinDiameterRightEye; set => SetProperty(ref p4MinDiameterRightEye, value, nameof(P4MinDiameterRightEye)); }
+        private float p4MinDiameterRightEye = 0.5f;
 
         // Pupil Downsampling Factor
         [Category("Performance Settings"), Description("Downsampling factor (left eye).")]

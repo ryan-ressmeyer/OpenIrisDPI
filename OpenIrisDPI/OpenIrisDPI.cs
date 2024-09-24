@@ -80,13 +80,13 @@ namespace OpenIris
         public int P1DsFactor { get; set; }
         public int P1Threshold { get; set; }
         public int P1RoiRadius { get; set; }
-        public int P1MinDiameter { get; set; }
+        public float P1MinDiameter { get; set; }
 
 
         public int PupilMaskErodeRadius { get; set; }
 
         public int P4RoiRadius { get; set; }
-        public int P4MinDiameter { get; set; }
+        public float P4MinDiameter { get; set; }
 
         public PupilAlgorithm PupilAlgorithm { get; set; }
     }
