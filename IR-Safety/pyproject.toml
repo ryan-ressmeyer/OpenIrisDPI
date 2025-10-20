@@ -1,0 +1,11 @@
+[project]
+name = "ir-safety-check"
+version = "0.1.0"
+description = "Eye Safety Analysis for IR Illuminator - IEC 62471 Compliance Check"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20.0",
+    "matplotlib>=3.3.0",
+    "pandas>=1.2.0",
+    "scipy>=1.6.0",
+]
