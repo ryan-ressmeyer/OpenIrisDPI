@@ -29,9 +29,22 @@ import pandas as pd
 from scipy.interpolate import CubicSpline
 from pathlib import Path
 
-# Configure matplotlib to use TkAgg backend for interactive plots
+# Configure matplotlib backend based on display availability
 import matplotlib
-matplotlib.use('TkAgg')  # Use TkAgg for GUI, or 'Agg' for non-interactive
+import os
+import sys
+
+# Check if running in headless environment
+HEADLESS = os.environ.get('DISPLAY', '') == '' or not sys.stdout.isatty()
+
+if HEADLESS:
+    matplotlib.use('Agg')  # Non-interactive backend for headless environments
+    ENABLE_PLOTS = False
+    print("Running in headless mode - plots will be skipped")
+else:
+    matplotlib.use('TkAgg')  # Interactive backend for GUI
+    ENABLE_PLOTS = True
+
 import matplotlib.pyplot as plt
 
 # Get the project directory from the script location
@@ -71,12 +84,17 @@ face_power = 8.5e-3  # W - Power measured when illuminator positioned for face i
 
 # For this analysis, we focus on the eye illumination scenario as it represents
 # the highest risk exposure condition for eye safety evaluation
-measured_power = eye_power
+check = 'eye'  # Options: 'eye' or 'face'
+assert check in ['eye', 'face'], "Check variable must be 'eye' or 'face'"
+if check == 'eye':
+    measured_power = eye_power
+else:
+    measured_power = face_power
 
 print_header("ILLUMINATOR SAFETY ANALYSIS", level=1)
 print(f"Measured power (eye position):  {eye_power*1000:.1f} mW")
 print(f"Measured power (face position): {face_power*1000:.1f} mW")
-print(f"Analysis will use eye position data: {measured_power*1000:.1f} mW")
+print(f"Analysis will use {check} position data: {measured_power*1000:.1f} mW")
 
 # =============================================================================
 # ILLUMINATOR SPECTRAL CHARACTERISTICS
@@ -98,19 +116,20 @@ print(f"Wavelength range:      {np.min(illuminator_wavelengths):.0f} - {np.max(i
 print(f"Peak wavelength:       ~{illuminator_wavelengths[np.argmax(illuminator_relative_intensity)]:.0f} nm")
 
 # Plot the illuminator spectral characteristics
-wavelength_plot_range = np.arange(np.min(illuminator_wavelengths),
-                                 np.max(illuminator_wavelengths), 1)
-plt.figure(figsize=(10, 6))
-plt.plot(wavelength_plot_range, illuminator_interp(wavelength_plot_range), linewidth=2)
-#plt.scatter(illuminator_wavelengths, illuminator_relative_intensity, color='red', s=30, alpha=0.7,
-           #label='Data points')
-plt.legend()
-plt.xlabel('Wavelength (nm)', fontsize=12)
-plt.ylabel('Relative Intensity', fontsize=12)
-plt.title('Illuminator Relative Spectral Intensity', fontsize=14)
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
+if ENABLE_PLOTS:
+    wavelength_plot_range = np.arange(np.min(illuminator_wavelengths),
+                                     np.max(illuminator_wavelengths), 1)
+    plt.figure(figsize=(10, 6))
+    plt.plot(wavelength_plot_range, illuminator_interp(wavelength_plot_range), linewidth=2)
+    #plt.scatter(illuminator_wavelengths, illuminator_relative_intensity, color='red', s=30, alpha=0.7,
+               #label='Data points')
+    plt.legend()
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Relative Intensity', fontsize=12)
+    plt.title('Illuminator Relative Spectral Intensity', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
 # =============================================================================
 # SENSOR SPECTRAL RESPONSIVITY
@@ -160,34 +179,35 @@ print(f"Sensor active area:            {sensor_area*1e6:.2f} mm²")
 sensor_sensitivity = sensor_interp(wavelengths) / sensor_interp(calibrated_wavelength)
 
 # Plot sensor responsivity and normalized sensitivity side by side
-sensor_plot_range = np.arange(np.min(sensor_wavelengths), np.max(sensor_wavelengths), 1)
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+if ENABLE_PLOTS:
+    sensor_plot_range = np.arange(np.min(sensor_wavelengths), np.max(sensor_wavelengths), 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-# Left subplot: Spectral responsivity
-ax1.plot(sensor_plot_range, sensor_interp(sensor_plot_range), linewidth=2)
-#ax1.scatter(sensor_wavelengths, sensor_responsivity, color='red', s=30, alpha=0.7,
-           #label='Data points')
-ax1.set_xlabel('Wavelength (nm)', fontsize=12)
-ax1.set_ylabel('Responsivity (mA/W)', fontsize=12)
-ax1.set_title('Thorlabs S121C Sensor Spectral Responsivity', fontsize=14)
-ax1.legend()
-ax1.grid(True, alpha=0.3)
+    # Left subplot: Spectral responsivity
+    ax1.plot(sensor_plot_range, sensor_interp(sensor_plot_range), linewidth=2)
+    #ax1.scatter(sensor_wavelengths, sensor_responsivity, color='red', s=30, alpha=0.7,
+               #label='Data points')
+    ax1.set_xlabel('Wavelength (nm)', fontsize=12)
+    ax1.set_ylabel('Responsivity (mA/W)', fontsize=12)
+    ax1.set_title('Thorlabs S121C Sensor Spectral Responsivity', fontsize=14)
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
 
-# Right subplot: Normalized sensitivity
-ax2.plot(wavelengths, sensor_sensitivity, linewidth=2, label='Normalized Sensitivity')
-ax2.plot([calibrated_wavelength, calibrated_wavelength], [0, 1],
-         color='red', linestyle='--',
-         label=f'Calibrated Wavelength ({calibrated_wavelength} nm)')
-ax2.set_ylim(0, 1.1)
-ax2.set_xlabel('Wavelength (nm)', fontsize=12)
-ax2.set_ylabel('Normalized Sensitivity', fontsize=12)
-ax2.set_title('Sensor Normalized Spectral Sensitivity', fontsize=14)
-ax2.legend()
-ax2.grid(True, alpha=0.3)
+    # Right subplot: Normalized sensitivity
+    ax2.plot(wavelengths, sensor_sensitivity, linewidth=2, label='Normalized Sensitivity')
+    ax2.plot([calibrated_wavelength, calibrated_wavelength], [0, 1],
+             color='red', linestyle='--',
+             label=f'Calibrated Wavelength ({calibrated_wavelength} nm)')
+    ax2.set_ylim(0, 1.1)
+    ax2.set_xlabel('Wavelength (nm)', fontsize=12)
+    ax2.set_ylabel('Normalized Sensitivity', fontsize=12)
+    ax2.set_title('Sensor Normalized Spectral Sensitivity', fontsize=14)
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
 
-plt.tight_layout()
-plt.savefig(SCRIPT_DIR / 'sensor_responsivity.jpg', dpi=300)
-plt.show()
+    plt.tight_layout()
+    plt.savefig(SCRIPT_DIR / 'sensor_responsivity.jpg', dpi=300)
+    plt.show()
 
 # =============================================================================
 # MATHEMATICAL DERIVATION: SPECTRAL IRRADIANCE CALCULATION
@@ -255,15 +275,16 @@ print(f"Peak spectral irradiance:    {np.max(illuminator_spectral_irradiance):.2
 print(f"Total calculated irradiance: {total_calculated_irradiance:.2f} W/m²")
 
 # Plot the calculated spectral irradiance
-plt.figure(figsize=(10, 6))
-plt.plot(wavelengths, illuminator_spectral_irradiance, linewidth=2)
-plt.xlabel('Wavelength (nm)', fontsize=12)
-plt.ylabel('Spectral Irradiance (W/m²/nm)', fontsize=12)
-plt.title('Illuminator Absolute Spectral Irradiance', fontsize=14)
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig(SCRIPT_DIR / 'spectral_irradiance.jpg', dpi=300)
-plt.show()
+if ENABLE_PLOTS:
+    plt.figure(figsize=(10, 6))
+    plt.plot(wavelengths, illuminator_spectral_irradiance, linewidth=2)
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Spectral Irradiance (W/m²/nm)', fontsize=12)
+    plt.title('Illuminator Absolute Spectral Irradiance', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(SCRIPT_DIR / 'spectral_irradiance.jpg', dpi=300)
+    plt.show()
 
 # =============================================================================
 # IEC 62471 SAFETY EVALUATION - INFRARED RADIATION HAZARD (Section 4.3.7)
@@ -437,31 +458,32 @@ print(f"Solid angle:            {illuminator_solid_angle:.4f} sr")
 illuminator_spectral_radiance = illuminator_spectral_irradiance / illuminator_solid_angle  # W/m²/sr/nm
 
 # Plot spectral radiance and retinal burn hazard weighting function in subplots
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+if ENABLE_PLOTS:
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-# Left subplot: Spectral radiance
-ax1.plot(wavelengths, illuminator_spectral_radiance, label='Spectral Radiance', linewidth=2)
-ax1.set_title('Illuminator Spectral Radiance', fontsize=14)
-ax1.set_xlabel('Wavelength (nm)', fontsize=12)
-ax1.set_ylabel('Spectral Radiance (W/m²/sr/nm)', fontsize=12)
-ax1.legend(fontsize=10)
-ax1.grid(True, alpha=0.3)
-ax1.set_xlim(wavelengths[0], wavelengths[-1])
+    # Left subplot: Spectral radiance
+    ax1.plot(wavelengths, illuminator_spectral_radiance, label='Spectral Radiance', linewidth=2)
+    ax1.set_title('Illuminator Spectral Radiance', fontsize=14)
+    ax1.set_xlabel('Wavelength (nm)', fontsize=12)
+    ax1.set_ylabel('Spectral Radiance (W/m²/sr/nm)', fontsize=12)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(wavelengths[0], wavelengths[-1])
 
-# Right subplot: Retinal burn hazard weighting function
-ax2.plot(r_wavelengths, r_lambda_values, label='R(λ) - Retinal Burn Hazard', color='firebrick', linewidth=2)
-# Use a logarithmic scale for the y-axis to better visualize the variations
-ax2.set_yscale('log')
-ax2.set_title('IEC 62471: Retinal Burn Hazard Weighting Function R(λ)', fontsize=14)
-ax2.set_xlabel('Wavelength (nm)', fontsize=12)
-ax2.set_ylabel('Spectral Weighting R(λ) (Log Scale)', fontsize=12)
-ax2.legend(fontsize=10)
-ax2.set_xlim(380, 1400)
-ax2.grid(True, which="both", ls="--", c='0.65')
+    # Right subplot: Retinal burn hazard weighting function
+    ax2.plot(r_wavelengths, r_lambda_values, label='R(λ) - Retinal Burn Hazard', color='firebrick', linewidth=2)
+    # Use a logarithmic scale for the y-axis to better visualize the variations
+    ax2.set_yscale('log')
+    ax2.set_title('IEC 62471: Retinal Burn Hazard Weighting Function R(λ)', fontsize=14)
+    ax2.set_xlabel('Wavelength (nm)', fontsize=12)
+    ax2.set_ylabel('Spectral Weighting R(λ) (Log Scale)', fontsize=12)
+    ax2.legend(fontsize=10)
+    ax2.set_xlim(380, 1400)
+    ax2.grid(True, which="both", ls="--", c='0.65')
 
-plt.tight_layout()
-plt.savefig(SCRIPT_DIR / 'spectral_radiance_hazard_function.jpg', dpi=300)
-plt.show()
+    plt.tight_layout()
+    plt.savefig(SCRIPT_DIR / 'spectral_radiance_hazard_function.jpg', dpi=300)
+    plt.show()
 # Calculate retinal burn hazard limit
 retinal_hazard_limit = 6000 / alpha  # W/m²/sr
 
